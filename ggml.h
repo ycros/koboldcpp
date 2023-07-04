@@ -204,7 +204,7 @@
 // Maximum training context of the model in use
 // For the LLaMA models this is normally 2048, but somehow "stepping out" by 128 gives better results (tested at 7B and 13B)
 #ifndef GGML_TRAINING_CTX
-#define GGML_TRAINING_CTX 2176
+#define GGML_TRAINING_CTX 2048
 #endif
 
 #define GGML_ASSERT(x) \
