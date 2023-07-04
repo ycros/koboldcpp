@@ -4243,22 +4243,6 @@ static inline int ggml_up(int n, int m) {
 #define ggml_assert_aligned(ptr) \
     GGML_ASSERT(((uintptr_t) (ptr))%GGML_MEM_ALIGN == 0)
 
-float get_theta_scale(int n_dims,int n_past,int n_ctx)
-{
-   if(n_ctx<=2048) //normie mode
-   {
-        return powf(10000.0, -2.0f/n_dims);
-   }
-   else
-   {
-       //using scaled NTK aware ctx
-       float a = (n_ctx<=4096?4.0:8.0);
-       float m = powf(a, n_dims / (n_dims - 2.0));
-       float s = powf(10000.0 * m, -2.0f/n_dims);
-       return s;
-   }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ggml_context * ggml_init(struct ggml_init_params params) {
@@ -12548,7 +12532,7 @@ static void ggml_compute_forward_rope_f32(
     // row index used to determine which thread to use
     int ir = 0;
 
-    const float theta_scale = get_theta_scale(n_dims,n_past,n_ctx);
+    const float theta_scale = powf(10000.0, -2.0f/n_dims);
 
     const bool is_neox = mode & 2;
     const bool is_glm  = mode & 4;
@@ -12588,7 +12572,9 @@ static void ggml_compute_forward_rope_f32(
                         dst_data[n_dims/2*3] = x2*sin_block_theta + x3*cos_block_theta;
                     }
                 } else if (!is_neox) {
-
+                    if (n_ctx > GGML_TRAINING_CTX) {
+                        theta = theta * GGML_TRAINING_CTX / n_ctx;
+                    }
                     for (int64_t i0 = 0; i0 < ne0; i0 += 2) {
                         const float cos_theta = cosf(theta);
                         const float sin_theta = sinf(theta);
@@ -12689,7 +12675,7 @@ static void ggml_compute_forward_rope_f16(
     // row index used to determine which thread to use
     int ir = 0;
 
-    const float theta_scale = get_theta_scale(n_dims,n_past,n_ctx);
+    const float theta_scale = powf(10000.0, -2.0f/n_dims);
 
     const bool is_neox = mode & 2;
     const bool is_glm  = mode & 4;
@@ -12729,6 +12715,9 @@ static void ggml_compute_forward_rope_f16(
                         dst_data[n_dims/2*3] = GGML_FP32_TO_FP16(x2*sin_block_theta + x3*cos_block_theta);
                     }
                 } if (!is_neox) {
+                    if (n_ctx > GGML_TRAINING_CTX) {
+                        theta = theta * GGML_TRAINING_CTX / n_ctx;
+                    }
                     for (int64_t i0 = 0; i0 < ne0; i0 += 2) {
                         const float cos_theta = cosf(theta);
                         const float sin_theta = sinf(theta);
@@ -12854,7 +12843,7 @@ static void ggml_compute_forward_rope_back_f32(
     // row index used to determine which thread to use
     int ir = 0;
 
-    const float theta_scale = get_theta_scale(n_dims,n_past,n_ctx);
+    const float theta_scale = powf(10000.0, -2.0f/n_dims);
 
     const bool is_neox = mode & 2;
 
@@ -12868,6 +12857,9 @@ static void ggml_compute_forward_rope_back_f32(
                 float theta = (float)p;
 
                 if (!is_neox) {
+                    if (n_ctx > GGML_TRAINING_CTX) {
+                        theta = theta * GGML_TRAINING_CTX / n_ctx;
+                    }
                     for (int64_t i0 = 0; i0 < ne0; i0 += 2) {
                         const float cos_theta = cosf(theta);
                         const float sin_theta = sinf(theta);
@@ -12968,7 +12960,7 @@ static void ggml_compute_forward_rope_back_f16(
     // row index used to determine which thread to use
     int ir = 0;
 
-    const float theta_scale = get_theta_scale(n_dims,n_past,n_ctx);
+    const float theta_scale = powf(10000.0, -2.0f/n_dims);
 
     const bool is_neox = mode & 2;
 
@@ -12982,6 +12974,9 @@ static void ggml_compute_forward_rope_back_f16(
                 float theta = (float)p;
 
                 if (!is_neox) {
+                    if (n_ctx > GGML_TRAINING_CTX) {
+                        theta = theta * GGML_TRAINING_CTX / n_ctx;
+                    }
                     for (int64_t i0 = 0; i0 < ne0; i0 += 2) {
                         const float cos_theta = cosf(theta);
                         const float sin_theta = sinf(theta);
