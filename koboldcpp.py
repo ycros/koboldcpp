@@ -5,7 +5,10 @@
 # allowing it to be used via a simulated kobold api endpoint
 # generation delay scales linearly with original prompt length.
 
+import base64
 import ctypes
+import ctypes.util
+import gzip
 import os
 import argparse
 import json, sys, http.server, time, asyncio, socket, threading
@@ -66,6 +69,10 @@ class generation_outputs(ctypes.Structure):
                 ("text", ctypes.c_char * 16384)]
 
 handle = None
+
+libc = ctypes.CDLL(ctypes.util.find_library('c'))
+libc.free.restype = None
+libc.free.argtypes = [ctypes.c_void_p]
 
 def getdirpath():
     return os.path.dirname(os.path.realpath(__file__))
@@ -167,6 +174,8 @@ def init_library():
     handle.get_last_token_count.restype = ctypes.c_int
     handle.abort_generate.restype = ctypes.c_bool
     handle.get_pending_output.restype = ctypes.c_char_p
+    handle.get_vocab.restype = ctypes.c_size_t
+    handle.get_vocab.argtypes = [ctypes.POINTER(ctypes.c_char_p)]
 
 def load_model(model_filename):
     inputs = load_model_inputs()
@@ -469,14 +478,31 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
             lastc = handle.get_last_token_count()
             response_body = (json.dumps({"last_process":lastp,"last_eval":laste,"last_token_count":lastc}).encode())
 
+        elif self.path.endswith(('/api/extra/get_vocab')):
+            vocab_ptr = ctypes.c_char_p()
+            size = handle.get_vocab(ctypes.byref(vocab_ptr))
+            try:
+                vocab_raw = ctypes.string_at(vocab_ptr, size)
+                vocab_base64 = base64.b64encode(vocab_raw)
+                response_body = json.dumps({"vocab":vocab_base64.decode("UTF-8")}).encode()
+            finally:
+                libc.free(ctypes.cast(vocab_ptr, ctypes.c_void_p))
+                vocab_ptr = None
+
+
         if response_body is None:
             self.send_response(404)
             self.end_headers()
             rp = 'Error: HTTP Server is running, but this endpoint does not exist. Please check the URL.'
             self.wfile.write(rp.encode())
         else:
+            response_len = len(response_body)
             self.send_response(200)
-            self.send_header('Content-Length', str(len(response_body)))
+            if response_len > 10000:
+                response_body = gzip.compress(response_body)
+                response_len = len(response_body)
+                self.send_header('Content-Encoding', 'gzip')
+            self.send_header('Content-Length', str(response_len))
             self.end_headers()
             self.wfile.write(response_body)
         return

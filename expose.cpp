@@ -237,4 +237,9 @@ extern "C"
     bool abort_generate() {
         return gpttype_generate_abort();
     }
+
+    size_t get_vocab(char ** buffer)
+    {
+        return gpttype_get_vocab(buffer);
+    }
 }

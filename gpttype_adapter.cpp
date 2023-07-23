@@ -867,6 +867,44 @@ const std::string & gpttype_get_pending_output()
     return concat_output;
 }
 
+size_t gpttype_get_vocab(char ** buffer)
+{
+    auto id_to_token = llama_ctx_v3->model.vocab.id_to_token;
+
+    // calculate the size of the buffer
+    size_t size = sizeof(uint32_t); // token count
+    for (auto &token : id_to_token)
+    {
+        size += sizeof(float); // score
+        size += sizeof(uint32_t); // token string length
+        size += token.tok.size(); // token string
+    }
+
+    // allocate the buffer
+    *buffer = (char *)malloc(size);
+    if (*buffer == NULL)
+    {
+        fprintf(stderr, "%s: error: failed to allocate %zu bytes\n", __func__, size);
+        return 0;
+    }
+
+    // encode the buffer
+    char * ptr = *buffer;
+    *(uint32_t *)ptr = id_to_token.size();
+    ptr += sizeof(uint32_t);
+    for (auto &token : id_to_token)
+    {
+        *(float *)ptr = token.score;
+        ptr += sizeof(float);
+        *(uint32_t *)ptr = token.tok.size();
+        ptr += sizeof(uint32_t);
+        memcpy(ptr, token.tok.c_str(), token.tok.size());
+        ptr += token.tok.size();
+    }
+
+    return size;
+}
+
 generation_outputs gpttype_generate(const generation_inputs inputs, generation_outputs &output)
 {
     concat_output = "";

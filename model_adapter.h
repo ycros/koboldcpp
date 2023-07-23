@@ -58,6 +58,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
 generation_outputs gpttype_generate(const generation_inputs inputs, generation_outputs &output);
 bool gpttype_generate_abort();
 const std::string & gpttype_get_pending_output();
+size_t gpttype_get_vocab(char ** buffer);
 
 void timer_start();
 double timer_check();
