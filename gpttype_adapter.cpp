@@ -946,12 +946,14 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
     if (!params.grammar.empty()) {
         if (file_format != FileFormat::GGJT_3) {
             fprintf(stderr, "%s: error: grammar support is only available for GGJT_3 models\n", __func__);
+            generation_finished = true;
             return output;
         }
         parsed_grammar = grammar_parser::parse(params.grammar.c_str());
         // will be empty (default) if there are parse errors
         if (parsed_grammar.rules.empty()) {
             fprintf(stderr, "%s: error: failed to parse grammar\n", __func__);
+            generation_finished = true;
             return output;
         }
         fprintf(stderr, "%s: grammar:\n", __func__);
