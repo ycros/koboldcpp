@@ -10,6 +10,7 @@
 #include <time.h>
 #include "model_adapter.h"
 #include "otherarch.h"
+#include "grammar-parser.h"
 
 //for easier compilation
 //concat source files into one file for compilation purposes
@@ -254,7 +255,7 @@ void sample_temperature(llama_token_data_array * candidates_p, float temp)
 }
 
 int SampleLogits(const float * logits, int n_ctx, int n_vocab, int rep_pen_range, float rep_pen, float top_k, float top_a, float top_p, float typical_p, float tfs, float temp, std::mt19937 & rng,
-int mirostat, float mirostat_tau, float mirostat_eta, const std::vector<samplers> & sampler_order)
+int mirostat, float mirostat_tau, float mirostat_eta, const std::vector<samplers> & sampler_order, llama_grammar * grammar)
 {
     int id = 0;
     std::vector<llama_token_data> candidates;
@@ -264,6 +265,10 @@ int mirostat, float mirostat_tau, float mirostat_eta, const std::vector<samplers
     }
 
     llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
+
+    if (grammar != nullptr) {
+        llama_sample_grammar(llama_ctx_v3, &candidates_p, grammar);
+    }
 
     if (mirostat == 1 || mirostat == 2)
     {
@@ -313,6 +318,10 @@ int mirostat, float mirostat_tau, float mirostat_eta, const std::vector<samplers
             }
         }
         id = sample_token(&candidates_p, rng);
+    }
+
+    if (grammar != nullptr) {
+        llama_grammar_accept_token(llama_ctx_v3, grammar, id);
     }
 
     return id;
@@ -914,6 +923,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
     params.n_batch = n_batch;
     params.n_threads = n_threads;
     bool stream_sse = inputs.stream_sse;
+    params.grammar = inputs.grammar;
 
     generation_finished = false; // Set current generation status
     generated_tokens.clear(); // New Generation, new tokens
@@ -929,6 +939,36 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
     if (params.seed <= 0 || params.seed==0xFFFFFFFF)
     {
         params.seed = time(NULL);
+    }
+
+    grammar_parser::parse_state parsed_grammar;
+    llama_grammar *             grammar = nullptr;
+    if (!params.grammar.empty()) {
+        if (file_format != FileFormat::GGJT_3) {
+            fprintf(stderr, "%s: error: grammar support is only available for GGJT_3 models\n", __func__);
+            return output;
+        }
+        parsed_grammar = grammar_parser::parse(params.grammar.c_str());
+        // will be empty (default) if there are parse errors
+        if (parsed_grammar.rules.empty()) {
+            fprintf(stderr, "%s: error: failed to parse grammar\n", __func__);
+            return output;
+        }
+        fprintf(stderr, "%s: grammar:\n", __func__);
+        grammar_parser::print_grammar(stderr, parsed_grammar);
+        fprintf(stderr, "\n");
+
+        {
+            auto it = params.logit_bias.find(llama_token_eos());
+            if ((it != params.logit_bias.end() && it->second == -INFINITY) || !unbanTokens) {
+                fprintf(stderr,
+                    "%s: warning: EOS token is disabled, which will cause most grammars to fail\n", __func__);
+            }
+        }
+
+        std::vector<const llama_grammar_element *> grammar_rules(parsed_grammar.c_rules());
+        grammar = llama_grammar_init(
+            grammar_rules.data(), grammar_rules.size(), parsed_grammar.symbol_ids.at("root"));
     }
 
     // tokenize the prompt
@@ -1276,6 +1316,9 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
                 snprintf(output.text, sizeof(output.text), "%s", "");
                 output.status = 0;
                 generation_finished = true;
+                if (grammar != nullptr) {
+                    llama_grammar_free(grammar);
+                }
                 return output;
             }
         }
@@ -1401,7 +1444,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
 
             id = SampleLogits(logitsPtr, nctx, n_vocab, last_n_size, repeat_penalty,
             top_k, top_a, top_p, typical_p, tfs_z, temp, rng,
-            params.mirostat, params.mirostat_tau, params.mirostat_eta, sampler_order);
+            params.mirostat, params.mirostat_tau, params.mirostat_eta, sampler_order, grammar);
 
             last_n_tokens.erase(last_n_tokens.begin());
             last_n_tokens.push_back(id);
@@ -1499,6 +1542,10 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
     last_process_time = pt1;
     last_token_count = realnpredict;
     snprintf(output.text, sizeof(output.text), "%s", concat_output.c_str());
+
+    if (grammar != nullptr) {
+        llama_grammar_free(grammar);
+    }
 
     return output;
 }

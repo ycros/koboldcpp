@@ -70,6 +70,7 @@ struct generation_inputs
     const int sampler_len;
     const char * stop_sequence[stop_token_max];
     const bool stream_sse;
+    const char *grammar;
 };
 struct generation_outputs
 {
