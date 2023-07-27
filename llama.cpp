@@ -187,7 +187,7 @@ struct llama_hparams {
     // LLaMAv2
     // TODO: load from model data hparams
     float f_ffn_mult = 1.0f;
-    float f_rms_norm_eps = 1e-6f;
+    float f_rms_norm_eps = LLAMA_DEFAULT_RMS_EPS;
 
     float rope_freq_base  = 10000.0f;
     float rope_freq_scale = 1.0f;
@@ -871,7 +871,7 @@ struct llama_context_params llama_context_default_params() {
         /*.n_ctx                       =*/ 512,
         /*.n_batch                     =*/ 512,
         /*.n_gqa                       =*/ 1,
-        /*.rms_norm_eps                =*/ 1e-6f,
+        /*.rms_norm_eps                =*/ LLAMA_DEFAULT_RMS_EPS,
         /*.gpu_layers                  =*/ 0,
         /*.main_gpu                    =*/ 0,
         /*.tensor_split                =*/ nullptr,
@@ -1721,12 +1721,17 @@ static bool llama_eval_internal(
     // run the computation
     ggml_build_forward_expand(&gf, cur);
 
+    // fprintf(stderr, "graph build time: %.3f ms (%d nodes, %d leafs)\n", (ggml_time_us() - t_start_us)/1000.0, gf.n_nodes, gf.n_leafs);
+
 #if GGML_USE_MPI
     ggml_mpi_graph_compute_pre(lctx.ctx_mpi, &gf, n_layer);
 #endif
 
 #ifdef GGML_USE_METAL
     if (lctx.ctx_metal && N == 1) {
+        if (!ggml_metal_if_optimized(lctx.ctx_metal)) {
+            ggml_metal_graph_find_concurrency(lctx.ctx_metal,&gf);
+        }
         ggml_metal_set_n_cb     (lctx.ctx_metal, n_threads);
         ggml_metal_graph_compute(lctx.ctx_metal, &gf);
         ggml_metal_get_tensor   (lctx.ctx_metal, cur);
