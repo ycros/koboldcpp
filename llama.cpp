@@ -4306,7 +4306,7 @@ struct llama_grammar_candidate {
 
 // Decodes a UTF-8 string which may end in an incomplete sequence. Adds a terminating 0 for use as
 // pointer. If an invalid sequence is encountered, returns `llama_partial_utf8.n_remain == -1`.
-static std::pair<std::vector<uint32_t>, llama_partial_utf8> decode_utf8(
+std::pair<std::vector<uint32_t>, llama_partial_utf8> decode_utf8(
         const char         * src,
         llama_partial_utf8   partial_start) {
     static const int      lookup[] = { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 2, 2, 3, 4 };

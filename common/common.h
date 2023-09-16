@@ -5,6 +5,10 @@
 #include "llama.h"
 #include "build-info.h"
 
+#ifndef LLAMA_NO_SEQREP_SAMPLER
+#include "seqrep-sampler.h"
+#endif
+
 #define LOG_NO_FILE_LINE_FUNCTION
 #include "log.h"
 
@@ -62,6 +66,9 @@ struct gpt_params {
     int32_t repeat_last_n     = 64;    // last n tokens to penalize (0 = disable penalty, -1 = context size)
     float   frequency_penalty = 0.00f; // 0.0 = disabled
     float   presence_penalty  = 0.00f; // 0.0 = disabled
+#ifndef LLAMA_NO_SEQREP_SAMPLER
+    std::vector<llama_sampler_seqrep_params> seqrep_params;
+#endif
     int32_t mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 5.00f; // target entropy
     float   mirostat_eta      = 0.10f; // learning rate

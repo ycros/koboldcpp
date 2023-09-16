@@ -1,4 +1,4 @@
-default: koboldcpp_default koboldcpp_failsafe koboldcpp_openblas koboldcpp_noavx2 koboldcpp_clblast koboldcpp_cublas koboldcpp_hipblas 
+default: koboldcpp_default koboldcpp_failsafe koboldcpp_openblas koboldcpp_noavx2 koboldcpp_clblast koboldcpp_cublas koboldcpp_hipblas
 tools: quantize_gpt2 quantize_gptj quantize_llama quantize_neox quantize_mpt
 dev: koboldcpp_openblas
 dev2: koboldcpp_clblast
@@ -211,15 +211,15 @@ endif # LLAMA_CUDA_FORCE_DMMV
 ggml-cuda.o: HIPFLAGS += $(addprefix --offload-arch=,$(GPU_TARGETS)) \
 						-DGGML_CUDA_DMMV_X=$(LLAMA_CUDA_DMMV_X) \
                         -DGGML_CUDA_MMV_Y=$(LLAMA_CUDA_MMV_Y) \
-                        -DK_QUANTS_PER_ITERATION=$(LLAMA_CUDA_KQUANTS_ITER) 
+                        -DK_QUANTS_PER_ITERATION=$(LLAMA_CUDA_KQUANTS_ITER)
 ggml_v2-cuda.o: HIPFLAGS += $(addprefix --offload-arch=,$(GPU_TARGETS)) \
 						-DGGML_CUDA_DMMV_X=$(LLAMA_CUDA_DMMV_X) \
                         -DGGML_CUDA_MMV_Y=$(LLAMA_CUDA_MMV_Y) \
-                        -DK_QUANTS_PER_ITERATION=$(LLAMA_CUDA_KQUANTS_ITER) 
+                        -DK_QUANTS_PER_ITERATION=$(LLAMA_CUDA_KQUANTS_ITER)
 ggml_v2-cuda-legacy.o: HIPFLAGS += $(addprefix --offload-arch=,$(GPU_TARGETS)) \
 						-DGGML_CUDA_DMMV_X=$(LLAMA_CUDA_DMMV_X) \
                         -DGGML_CUDA_MMV_Y=$(LLAMA_CUDA_MMV_Y) \
-                        -DK_QUANTS_PER_ITERATION=$(LLAMA_CUDA_KQUANTS_ITER) 
+                        -DK_QUANTS_PER_ITERATION=$(LLAMA_CUDA_KQUANTS_ITER)
 ggml-cuda.o: ggml-cuda.cu ggml-cuda.h
 	$(CXX) $(CXXFLAGS) $(HIPFLAGS) -x hip -c -o $@ $<
 ggml_v2-cuda.o: otherarch/ggml_v2-cuda.cu otherarch/ggml_v2-cuda.h
@@ -393,13 +393,22 @@ ggml_v2-opencl-legacy.o: otherarch/ggml_v2-opencl-legacy.c otherarch/ggml_v2-ope
 # intermediate objects
 llama.o: llama.cpp ggml.h ggml-alloc.h ggml-cuda.h ggml-metal.h llama.h otherarch/llama-util.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
-common.o: common/common.cpp common/common.h common/log.h
+
+COMMON_DEPS = common/common.cpp common/common.h build-info.h common/log.h
+COMMON_OBJS = common.o
+ifndef LLAMA_DISABLE_SEQREP_SAMPLER
+COMMON_DEPS += common/seqrep-sampler.cpp common/seqrep-sampler.h
+COMMON_OBJS += seqrep-sampler.o
+endif
+common.o: $(COMMON_DEPS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 console.o: common/console.cpp common/console.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 grammar-parser.o: common/grammar-parser.cpp common/grammar-parser.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 expose.o: expose.cpp expose.h
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+seqrep-sampler.o: common/seqrep-sampler.cpp common/seqrep-sampler.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # idiotic "for easier compilation"

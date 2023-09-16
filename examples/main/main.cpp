@@ -404,6 +404,11 @@ int main(int argc, char ** argv) {
     }
     LOG_TEE("sampling: repeat_last_n = %d, repeat_penalty = %f, presence_penalty = %f, frequency_penalty = %f, top_k = %d, tfs_z = %f, top_p = %f, typical_p = %f, temp = %f, mirostat = %d, mirostat_lr = %f, mirostat_ent = %f\n",
             params.repeat_last_n, params.repeat_penalty, params.presence_penalty, params.frequency_penalty, params.top_k, params.tfs_z, params.top_p, params.typical_p, params.temp, params.mirostat, params.mirostat_eta, params.mirostat_tau);
+#ifndef LLAMA_NO_SEQREP_SAMPLER
+    for (auto & sr_params : params.seqrep_params) {
+        seqrep_sampler_params_dump(&sr_params);
+    }
+#endif
     LOG_TEE("generate: n_ctx = %d, n_batch = %d, n_predict = %d, n_keep = %d\n", n_ctx, params.n_batch, params.n_predict, params.n_keep);
     LOG_TEE("\n\n");
 
