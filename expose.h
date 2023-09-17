@@ -49,6 +49,7 @@ struct load_model_inputs
     const float rope_freq_base = 10000.0f;
     const char * banned_tokens[ban_token_max];
     const float tensor_split[tensor_split_max];
+    const char * seqrep_params;
 };
 struct generation_inputs
 {

@@ -41,7 +41,8 @@ class load_model_inputs(ctypes.Structure):
                 ("rope_freq_scale", ctypes.c_float),
                 ("rope_freq_base", ctypes.c_float),
                 ("banned_tokens", ctypes.c_char_p * ban_token_max),
-                ("tensor_split", ctypes.c_float * tensor_split_max)]
+                ("tensor_split", ctypes.c_float * tensor_split_max),
+                ("seqrep_params", ctypes.c_char_p)]
 
 class generation_inputs(ctypes.Structure):
     _fields_ = [("seed", ctypes.c_int),
@@ -224,6 +225,10 @@ def load_model(model_filename):
     inputs.forceversion = args.forceversion
     inputs.gpulayers = args.gpulayers
     inputs.rope_freq_scale = args.ropeconfig[0]
+    inputs.seqrep_params = "".encode("UTF-8")
+    if args.seqrep:
+        inputs.seqrep_params = args.seqrep.encode("UTF-8")
+
     if len(args.ropeconfig)>1:
         inputs.rope_freq_base = args.ropeconfig[1]
     else:
@@ -1860,5 +1865,6 @@ if __name__ == '__main__':
     parser.add_argument("--tensor_split", help="For CUDA with ALL GPU set only, ratio to split tensors across multiple GPUs, space-separated list of proportions, e.g. 7 3", metavar=('[Ratios]'), type=float, nargs='+')
     parser.add_argument("--onready", help="An optional shell command to execute after the model has been loaded.", type=str, default="",nargs=1)
     parser.add_argument("--multiuser", help="Runs in multiuser mode, which queues incoming requests instead of blocking them. Polled-streaming is disabled while multiple requests are in queue.", action='store_true')
+    parser.add_argument("--seqrep", help="TEST seqrep", type=str, default="")
 
     main(parser.parse_args(),start_server=True)

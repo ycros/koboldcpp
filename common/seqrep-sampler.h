@@ -201,7 +201,7 @@ size_t llama_seqrep_handle_rewind(
 void seqrep_sampler_help();
 void seqrep_sampler_params_init(llama_sampler_seqrep_params * params);
 void seqrep_sampler_params_dump(const llama_sampler_seqrep_params * params);
-bool seqrep_sampler_params_parse(char * s, llama_sampler_seqrep_params * params);
+bool seqrep_sampler_params_parse(const char * s, llama_sampler_seqrep_params * params);
 struct llama_sampler_seqrep_params llama_seqrep_merge_params(
     const std::vector<llama_sampler_seqrep_params> & params_list,
     const int and_flags,

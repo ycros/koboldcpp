@@ -96,7 +96,7 @@ void seqrep_sampler_help() {
     printf("  * min_length=3:tolerance=1:length_penalty=.2:last_n=-1\n    match repeated sequences of at least 3 tokens within the entire context and apply a penalty of 0.2*total_length to the token that would continue the sequence. allow one non-matching token in matched sequences.\n");
 }
 
-bool seqrep_sampler_params_parse(char * s, llama_sampler_seqrep_params * params) {
+bool seqrep_sampler_params_parse(const char * s, llama_sampler_seqrep_params * params) {
     assert(params != NULL);
     assert(s != NULL);
     size_t offset = 0;
@@ -557,9 +557,9 @@ seqrep_rewind_state::seqrep_rewind_state(const size_t n_vocab, const size_t n_ct
 }
 
 void seqrep_rewind_state::set_logits_slot(llama_context * ctx, const size_t orig_idx) {
+    // printf("\n-- %zu, %zu, %zu\n", orig_idx, high_water_mark, logit_slots.size());
     GGML_ASSERT(orig_idx >= high_water_mark);
     const size_t idx = orig_idx - high_water_mark;
-    // printf("-- %zu, %zu, %zu\n", orig_idx, idx, logit_slots.size());
     GGML_ASSERT(idx <= logit_slots.size());
     if (idx == logit_slots.size()) {
         logit_slots.emplace_back(ctx, k);
@@ -672,7 +672,12 @@ size_t llama_seqrep_handle_rewind(
         return 0;
     }
 
-    llama_sampler_seqrep_params merged_params = llama_seqrep_merge_params(params_list, LLAMA_SEQREP_REWIND_MODE, 0);
+    // llama_sampler_seqrep_params merged_params = llama_seqrep_merge_params(params_list, LLAMA_SEQREP_REWIND_MODE, 0);
+    // printf("\nparams_list.size() = %zu\n", params_list.size());
+    // seqrep_sampler_params_dump(&merged_params);
+    GGML_ASSERT(params_list.size() > 0);
+    llama_sampler_seqrep_params merged_params = params_list[0];
+    // seqrep_sampler_params_dump(&merged_params);
     size_t rewind_distance = 0;
     size_t idx = last_tokens.size();
     std::vector<char> rewind_token_text_buf(128, 0);

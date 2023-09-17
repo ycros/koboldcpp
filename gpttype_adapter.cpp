@@ -268,6 +268,11 @@ int mirostat, float mirostat_tau, float mirostat_eta, const std::vector<samplers
 
     llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
 
+    for (auto & sr_params : params.seqrep_params) {
+        if ((sr_params.flags & LLAMA_SEQREP_REWIND_MODE) != 0) continue;
+        llama_sample_seqrep_penalty(llama_ctx_v4, &candidates_p, current_context_tokens.data(), current_context_tokens.size(), &sr_params);
+    }
+
     if (mirostat == 1 || mirostat == 2)
     {
         static float mirostat_mu = 2.0f * mirostat_tau;
@@ -461,6 +466,24 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
         {
             banned_tokens.push_back(word);
         }
+    }
+
+    // debug print seqrep params
+    printf("\n\n### SeqRep Params: %s\n", inputs.seqrep_params);
+    if (inputs.seqrep_params != "") {
+        if (std::strcmp(inputs.seqrep_params, "help") == 0) {
+            seqrep_sampler_help();
+            return ModelLoadResult::FAIL;
+        }
+        llama_sampler_seqrep_params sr_params;
+        seqrep_sampler_params_init(&sr_params);
+        if (!seqrep_sampler_params_parse(inputs.seqrep_params, &sr_params)) {
+            seqrep_sampler_help();
+            fprintf(stderr, "%s: error: failed to parse seqrep params\n", __func__);
+            return ModelLoadResult::FAIL;
+        }
+        params.seqrep_params.push_back(sr_params);
+        seqrep_sampler_params_dump(&sr_params);
     }
 
     //this is used for the mem_per_token eval, openblas needs more RAM
@@ -1113,7 +1136,8 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
     //determine how much npast we have to rewind from the current state
     std::vector<gpt_vocab::id> embd;
 
-    int last_n_size = params.repeat_last_n;
+    int last_n_size = nctx;
+    // int last_n_size = params.repeat_last_n;
     last_n_tokens.resize(last_n_size);
 
     std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
@@ -1329,6 +1353,17 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
         printf("%s\n\n", RemoveBell(outstr).c_str());
     }
 
+    // llama_sampler_seqrep_params sr_params =
+        // llama_seqrep_merge_params(params.seqrep_params, LLAMA_SEQREP_REWIND_MODE, 0);
+    // seqrep_sampler_params_dump(&sr_params);
+
+    size_t high_water_mark = 0;
+    size_t prompt_size = embd_inp.size();
+    std::vector<char> rewind_token_text_buf(128, 0);
+    struct seqrep_rewind_state rewind_state(llama_n_vocab(llama_ctx_v4), nctx, 2000, 0);
+
+    // rewind_state.set_logits_slot(llama_ctx_v4, 0);
+
     while (remaining_tokens > 0)
     {
         gpt_vocab::id id = 0;
@@ -1341,9 +1376,60 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
         }
         fflush(stdout);
 
+        if (startedsampling) {
+            // print current token
+            printf("%s", FileFormatTokenizeID(current_context_tokens.back(), file_format).c_str());
+            // // print embd
+            // printf("\n[%zu, %s]\n", embd.size(), FileFormatTokenizeID(embd.back(), file_format).c_str());
+
+            const size_t rewind_distance =
+                llama_seqrep_handle_rewind(
+                    llama_ctx_v4, rewind_state, current_context_tokens, prompt_size,
+                    params.seqrep_params, &high_water_mark);
+
+            if (rewind_distance > 0) {
+                const size_t idx = current_context_tokens.size() - rewind_distance;
+                const llama_token nl_id = llama_token_nl(llama_ctx_v4);
+
+                // get rewound tokens as a string, then trim off the end of concat_output
+                std::string rewound_tokens_str = "";
+                for (size_t i = idx; i < current_context_tokens.size(); i++) {
+                    if (current_context_tokens[i] == nl_id) {
+                        rewound_tokens_str += "\\n";
+                        continue;
+                    }
+                    if (rewound_tokens_str != "") {
+                        rewound_tokens_str += "|";
+                    }
+                    const std::string token_str = llama_token_to_piece(llama_ctx_v4, current_context_tokens[i]);
+                    rewound_tokens_str += token_str;
+                }
+                current_context_tokens.resize(idx);
+                remaining_tokens += rewind_distance;
+                n_past -= rewind_distance;
+
+                // reset embd to last current_context_token
+                embd.clear();
+                embd.push_back(current_context_tokens.back());
+
+                concat_output_mtx.lock();
+                // regenerate concat_output from current_context_tokens
+                concat_output = "";
+                for (size_t i = prompt_size; i < current_context_tokens.size(); i++) {
+                    const std::string token_str = llama_token_to_piece(llama_ctx_v4, current_context_tokens[i]);
+                    concat_output += token_str;
+                }
+                concat_output_mtx.unlock();
+
+                // print rewound tokens surrounded by brackets
+                printf("\n[");
+                printf("%s", rewound_tokens_str.c_str());
+                printf("]\n");
+            }
+        }
+
         if (embdsize > 0)
         {
-
             bool evalres = false;
 
             if (file_format == FileFormat::GGML || file_format == FileFormat::GGHF || file_format == FileFormat::GGJT || file_format == FileFormat::GGJT_2)
@@ -1433,6 +1519,9 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
             }
         }
 
+        // printf("\ncurrent_context_tokens.size() = %zu\n", current_context_tokens.size());
+        // printf("\nprompt_size = %zu\n", prompt_size);
+
         n_past += embd.size();
         embd.clear();
         if ((int)embd_inp.size() <= input_consumed)
@@ -1451,6 +1540,10 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
                 startedsampling = true;
                 params.n_batch = original_batch;
                 params.n_threads = original_threads;
+                prompt_size = current_context_tokens.size();
+                high_water_mark = current_context_tokens.size();
+                rewind_state.set_high_water_mark(high_water_mark - 1);
+                rewind_state.set_logits_slot(llama_ctx_v4, high_water_mark - 1);
                 time1 = timer_check();
                 timer_start();
                 if(debugmode!=-1)
@@ -1571,6 +1664,10 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
             // decrement remaining sampling budget
             --remaining_tokens;
 
+            if (startedsampling) {
+                rewind_state.set_logits_slot(llama_ctx_v4, current_context_tokens.size() - 1);
+            }
+
             for (auto id : embd)
             {
                 std::string tokenizedstr = FileFormatTokenizeID(id, file_format);
@@ -1585,7 +1682,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
 
             if (startedsampling && debugmode!=-1)
             {
-                printf("\rGenerating (%d / %d tokens)", (params.n_predict - remaining_tokens), params.n_predict);
+                // printf("\rGenerating (%d / %d tokens)", (params.n_predict - remaining_tokens), params.n_predict);
             }
             if(debugmode==1 && top_picks.size()>0)
             {
