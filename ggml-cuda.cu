@@ -5130,9 +5130,9 @@ static __global__ void k_argsort_f32_i32(const float * x, int * dst, const int n
             if (condition) {
                 // Swap
                 swap(dst_row[j], dst_row[j - 1]);
-                } else {
+            } else {
                 break;
-                    }
+            }
             j--;
         }
     }
@@ -7611,6 +7611,27 @@ inline void ggml_cuda_op_sum_rows(
     (void) src1_dd;
 }
 
+// const size_t TOTAL_EXPERTS = 8;
+static uint * expert_counter = nullptr;
+static size_t expert_count;
+static uint experts_per_tok = 2;
+
+void reset_expert_counter(uint experts_per_tok, size_t expert_count) {
+    if (expert_counter != nullptr) {
+        free(expert_counter);
+    }
+    expert_counter = (uint *) calloc(expert_count, sizeof(uint));
+    ::experts_per_tok = experts_per_tok;
+    ::expert_count = expert_count;
+}
+
+void print_expert_counter() {
+    for (int i = 0; i < expert_count; i++) {
+        printf("%u:%2u  ", i,  expert_counter[i]);
+    }
+    printf("\n");
+}
+
 inline void ggml_cuda_op_argsort(
     const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst,
     const float * src0_dd, const float * src1_dd, float * dst_dd, const cudaStream_t & main_stream) {
@@ -7631,25 +7652,22 @@ inline void ggml_cuda_op_argsort(
     int* dst_host = (int *) malloc(ncols * nrows * sizeof(int));
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(dst_host, dst_dd, ncols * nrows * sizeof(int), cudaMemcpyDeviceToHost));
-    // printf("\n");
-    printf("%s: \n", ggml_get_name(dst));
-    // CUDA_CHECK(cudaStreamSynchronize(g_cudaStreams[g_main_device][0]));
-    // for (int i = 0; i < ncols; i++) {
-    //     printf("%d ", ((int *)dst_host)[i]);
-    // }
+    // printf("%s: \n", ggml_get_name(dst));
 
     // row major order
     for (int i = 0; i < nrows; i++) {
         for (int j = 0; j < ncols; j++) {
-            printf("%d ", dst_host[i * ncols + j]);
+            int val = dst_host[i * ncols + j];
+            if (j < experts_per_tok) {
+                GGML_ASSERT(val < expert_count);
+                expert_counter[val]++;
+            } else {
+                break;
+            }
+            // printf("%d ", val);
         }
-        printf("\n");
+        // printf("\n");
     }
-
-    // for (int i = 0; i < ggml_nelements(dst); i++) {
-    //     printf("%d ", ggml_get_i32_1d(dst, i));
-    // }
-    // printf("\n");
 
     (void) src1;
     (void) dst;
@@ -9685,9 +9703,9 @@ static void ggml_backend_cuda_graph_compute(ggml_backend_t backend, ggml_cgraph 
             }
         }
 
-        printf("\n");
+        // printf("\n");
         bool ok = ggml_cuda_compute_forward(&params, node);
-        printf("\n");
+        // printf("\n");
         if (!ok) {
             fprintf(stderr, "%s: error: op not supported %s (%s)\n", __func__, node->name, ggml_op_name(node->op));
         }

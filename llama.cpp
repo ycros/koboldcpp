@@ -4199,6 +4199,11 @@ struct llm_build_context {
     }
 
     struct ggml_cgraph * build_llama() {
+        #ifdef GGML_USE_CUBLAS
+        // printf("\nexpert_used: %u\n", n_expert_used);
+        reset_expert_counter(n_expert_used, n_expert);
+        #endif
+
         struct ggml_cgraph * gf = ggml_new_graph_custom(ctx0, LLAMA_MAX_NODES, false);
 
         GGML_ASSERT(n_embd_head == hparams.n_rot);
@@ -6172,6 +6177,12 @@ static int llama_decode_internal(
     // requires GGML_PERF to be defined
     ggml_graph_print(gf);
 #endif
+
+#ifdef GGML_USE_CUBLAS
+    print_expert_counter();
+#endif
+
+    // ycros_moe_debug(gf);
 
     // plot the computation graph in dot format (for debugging purposes)
     //if (n_past%100 == 0) {
