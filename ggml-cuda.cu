@@ -7628,6 +7628,32 @@ inline void ggml_cuda_op_argsort(
 
     argsort_f32_i32_cuda(src0_dd, (int *)dst_dd, ncols, nrows, order, main_stream);
 
+    // printf ncols, nrows
+    // printf("\nncols: %d, nrows: %d", ncols, nrows);
+
+    int* dst_host = (int *) malloc(ncols * nrows * sizeof(int));
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(dst_host, dst_dd, ncols * nrows * sizeof(int), cudaMemcpyDeviceToHost));
+    // printf("\n");
+    printf("%s: \n", ggml_get_name(dst));
+    // CUDA_CHECK(cudaStreamSynchronize(g_cudaStreams[g_main_device][0]));
+    // for (int i = 0; i < ncols; i++) {
+    //     printf("%d ", ((int *)dst_host)[i]);
+    // }
+
+    // row major order
+    for (int i = 0; i < nrows; i++) {
+        for (int j = 0; j < ncols; j++) {
+            printf("%d ", dst_host[i * ncols + j]);
+        }
+        printf("\n");
+    }
+
+    // for (int i = 0; i < ggml_nelements(dst); i++) {
+    //     printf("%d ", ggml_get_i32_1d(dst, i));
+    // }
+    // printf("\n");
+
     (void) src1;
     (void) dst;
     (void) src1_dd;
@@ -9662,11 +9688,14 @@ static void ggml_backend_cuda_graph_compute(ggml_backend_t backend, ggml_cgraph 
             }
         }
 
+        printf("\n");
         bool ok = ggml_cuda_compute_forward(&params, node);
+        printf("\n");
         if (!ok) {
             fprintf(stderr, "%s: error: op not supported %s (%s)\n", __func__, node->name, ggml_op_name(node->op));
         }
         GGML_ASSERT(ok);
+
 
 #if 0
         if (node->type == GGML_TYPE_F32) {

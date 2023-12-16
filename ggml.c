@@ -12357,6 +12357,10 @@ static void ggml_compute_forward_argsort(
         case GGML_TYPE_F32:
             {
                 ggml_compute_forward_argsort_f32(params, src0, dst);
+                for (int i = 0; i < ggml_nelements(dst); i++) {
+                    printf("%d ", ggml_get_i32_1d(dst, i));
+                }
+                printf("\n");
             } break;
         default:
             {

@@ -6074,6 +6074,8 @@ static int llama_decode_internal(
 
     //printf("kv_self.n = %5d, kv_self.used = %5d, kv_self.head = %5d\n", kv_self.n, kv_self.used, kv_self.head);
 
+    printf("\n");
+
     ggml_allocr_reset(lctx.alloc);
 
     ggml_cgraph * gf = llama_build_graph(lctx, batch);
