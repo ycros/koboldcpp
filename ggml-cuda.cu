@@ -7614,7 +7614,7 @@ inline void ggml_cuda_op_sum_rows(
 // const size_t TOTAL_EXPERTS = 8;
 static uint * expert_counter = nullptr;
 static size_t expert_count;
-static uint experts_per_tok = 2;
+static uint experts_per_tok = 0;
 
 void reset_expert_counter(uint experts_per_tok, size_t expert_count) {
     if (expert_counter != nullptr) {
@@ -7626,9 +7626,18 @@ void reset_expert_counter(uint experts_per_tok, size_t expert_count) {
 }
 
 void print_expert_counter() {
+    printf("\n");
+    uint total = 0;
     for (int i = 0; i < expert_count; i++) {
-        printf("%u:%2u  ", i,  expert_counter[i]);
+        printf("%u:%6u  ", i,  expert_counter[i]);
+        total += expert_counter[i];
     }
+
+    printf("\n");
+    for (int i = 0; i < expert_count; i++) {
+        printf("%u:%6.2f%% ", i, 100.0f * expert_counter[i] / total);
+    }
+
     printf("\n");
 }
 
@@ -7649,24 +7658,26 @@ inline void ggml_cuda_op_argsort(
     // printf ncols, nrows
     // printf("\nncols: %d, nrows: %d", ncols, nrows);
 
-    int* dst_host = (int *) malloc(ncols * nrows * sizeof(int));
-    CUDA_CHECK(cudaDeviceSynchronize());
-    CUDA_CHECK(cudaMemcpy(dst_host, dst_dd, ncols * nrows * sizeof(int), cudaMemcpyDeviceToHost));
-    // printf("%s: \n", ggml_get_name(dst));
+    if (expert_counter != nullptr) {
+        int* dst_host = (int *) malloc(ncols * nrows * sizeof(int));
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaMemcpy(dst_host, dst_dd, ncols * nrows * sizeof(int), cudaMemcpyDeviceToHost));
+        // printf("%s: \n", ggml_get_name(dst));
 
-    // row major order
-    for (int i = 0; i < nrows; i++) {
-        for (int j = 0; j < ncols; j++) {
-            int val = dst_host[i * ncols + j];
-            if (j < experts_per_tok) {
-                GGML_ASSERT(val < expert_count);
-                expert_counter[val]++;
-            } else {
-                break;
+        // row major order
+        for (int i = 0; i < nrows; i++) {
+            for (int j = 0; j < ncols; j++) {
+                int val = dst_host[i * ncols + j];
+                if (j < experts_per_tok) {
+                    GGML_ASSERT(val < expert_count);
+                    expert_counter[val]++;
+                } else {
+                    break;
+                }
+                // printf("%d ", val);
             }
-            // printf("%d ", val);
+            // printf("\n");
         }
-        // printf("\n");
     }
 
     (void) src1;

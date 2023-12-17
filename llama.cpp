@@ -4205,7 +4205,7 @@ struct llm_build_context {
     struct ggml_cgraph * build_llama() {
         #ifdef GGML_USE_CUBLAS
         // printf("\nexpert_used: %u\n", n_expert_used);
-        reset_expert_counter(n_expert_used, n_expert);
+        // reset_expert_counter(n_expert_used, n_expert);
         #endif
 
         struct ggml_cgraph * gf = ggml_new_graph_custom(ctx0, LLAMA_MAX_NODES, false);
@@ -6083,7 +6083,7 @@ static int llama_decode_internal(
 
     //printf("kv_self.n = %5d, kv_self.used = %5d, kv_self.head = %5d\n", kv_self.n, kv_self.used, kv_self.head);
 
-    printf("\n");
+    // printf("\n");
 
     ggml_allocr_reset(lctx.alloc);
 
@@ -6183,7 +6183,7 @@ static int llama_decode_internal(
 #endif
 
 #ifdef GGML_USE_CUBLAS
-    print_expert_counter();
+    // print_expert_counter();
 #endif
 
     // ycros_moe_debug(gf);
