@@ -865,6 +865,20 @@ extern "C" {
 
     LLAMA_API void llama_dump_timing_info_yaml(FILE * stream, const struct llama_context * ctx);
 
+
+    namespace entropy_stats {
+
+        // Initializes or reinitializes the state with new minimum, maximum, and bucket count
+        void reset(float min, float max, int num_buckets);
+
+        // Logs a value by incrementing the appropriate bucket
+        void log_value(float value);
+
+        // Prints a distribution of the values in the buckets, with a simple bar graph
+        void pretty_print();
+
+    } // namespace entropy_stats
+
 #ifdef __cplusplus
 }
 #endif

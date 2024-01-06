@@ -8515,6 +8515,61 @@ void llama_sample_temperature(struct llama_context * ctx, llama_token_data_array
     llama_sample_temp(ctx, candidates_p, temp);
 }
 
+
+namespace entropy_stats {
+
+    // Global state
+    std::vector<int> buckets;
+    float global_min = 0.0f;
+    float global_max = 0.0f;
+    int bucket_count = 10;
+
+    // Resets the state with new min, max, and bucket count
+    void reset(float min, float max, int num_buckets) {
+        global_min = min;
+        global_max = max;
+        bucket_count = num_buckets;
+        buckets = std::vector<int>(bucket_count, 0);
+    }
+
+    // Increments the bucket for a given value
+    void log_value(float value) {
+        if (value < global_min || value > global_max) {
+            printf("Error: Value %f is out of range [%f, %f]\n", value, global_min, global_max);
+            return;
+        }
+
+        int bucket_index = static_cast<int>((value - global_min) / (global_max - global_min) * bucket_count);
+        if (bucket_index == bucket_count) {
+            bucket_index--; // Handle edge case where value equals global_max
+        }
+        buckets[bucket_index]++;
+    }
+
+    // Pretty prints the distribution of values in the buckets
+    void pretty_print() {
+        // Find the maximum count in buckets for scaling the bar graph
+        int max_count = *std::max_element(buckets.begin(), buckets.end());
+
+        for (int i = 0; i < bucket_count; ++i) {
+            // Calculate the range for each bucket
+            float lower_bound = global_min + i * (global_max - global_min) / bucket_count;
+            float upper_bound = global_min + (i + 1) * (global_max - global_min) / bucket_count;
+
+            // Print bucket range and count, formatted to align
+            printf("Bucket %2d (%5.2f to %5.2f): %4d | ", i, lower_bound, upper_bound, buckets[i]);
+
+            // Generate and print the bar graph
+            int bar_length = (max_count == 0) ? 0 : (20 * buckets[i] / max_count); // Scale to 20 chars
+            for (int j = 0; j < bar_length; ++j) {
+                printf("#");
+            }
+            printf("\n");
+        }
+    }
+
+} // namespace entropy_stats
+
 void llama_sample_entropy(struct llama_context * ctx, llama_token_data_array * candidates_p, float temp, float min_temp = 0, float max_temp = 2.0f) {
     const int64_t t_start_sample_us = ggml_time_us();
 
@@ -8553,6 +8608,8 @@ void llama_sample_entropy(struct llama_context * ctx, llama_token_data_array * c
     // printf("Normalized Entropy: %f\n", normalized_entropy);
     // printf("Exponent: %f\n", exponent_val);
     // printf("Dynamic Temperature (dyn_temp): %f\n", dyn_temp);
+    // printf("dyntemp: %f\n", dyn_temp);
+    entropy_stats::log_value(dyn_temp);
 
     // Apply the dynamically calculated temperature scaling
     for (size_t i = 0; i < candidates_p->size; ++i) {

@@ -1786,6 +1786,16 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
         printf("%s\n\n", RemoveBell(outstr).c_str());
     }
 
+    if (kcpp_params->dynatemp_range>0)
+    {
+        float dynatemp_min = kcpp_params->temp - kcpp_params->dynatemp_range;
+        float dynatemp_max = kcpp_params->temp + kcpp_params->dynatemp_range;
+        //do not allow negative values
+        dynatemp_min = dynatemp_min<0?0:dynatemp_min;
+        dynatemp_max = dynatemp_max<0?0:dynatemp_max;
+        entropy_stats::reset(dynatemp_min, dynatemp_max, 10);
+    }
+
     while (remaining_tokens > 0)
     {
         gpt_vocab::id id = 0;
@@ -2062,6 +2072,12 @@ generation_outputs gpttype_generate(const generation_inputs inputs, generation_o
     float pt2 = (time2*1000.0/(realnpredict==0?1:realnpredict));
     float tokens_per_second = (realnpredict == 0 ? 0 : realnpredict / (time1 + time2));
     printf("\nContextLimit: %d/%d, Processing:%.2fs (%.1fms/T), Generation:%.2fs (%.1fms/T), Total:%.2fs (%.2fT/s)",current_context_tokens.size(),nctx, time1, pt1, time2, pt2, (time1 + time2), tokens_per_second);
+    fflush(stdout);
+    if (kcpp_params->dynatemp_range>0)
+    {
+        printf("\n");
+        entropy_stats::pretty_print();
+    }
     fflush(stdout);
     output.status = 1;
     generation_finished = true;
