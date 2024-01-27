@@ -490,16 +490,24 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
                 genparams["mirostat"] = genparams.get('mirostat_mode', 0)
 
                 if api_format==4:
+                    genparams["stop_sequence"] = ["<|im_end|>", "<|im_start|>"]
                     # translate openai chat completion messages format into one big string.
                     messages_array = genparams.get('messages', [])
                     adapter_obj = genparams.get('adapter', {})
                     messages_string = ""
-                    system_message_start = adapter_obj.get("system_start", "\n### Instruction:\n")
-                    system_message_end = adapter_obj.get("system_end", "")
-                    user_message_start = adapter_obj.get("user_start", "\n### Instruction:\n")
-                    user_message_end = adapter_obj.get("user_end", "")
-                    assistant_message_start = adapter_obj.get("assistant_start", "\n### Response:\n")
-                    assistant_message_end = adapter_obj.get("assistant_end", "")
+                    # system_message_start = adapter_obj.get("system_start", "\n### Instruction:\n")
+                    # system_message_end = adapter_obj.get("system_end", "")
+                    # user_message_start = adapter_obj.get("user_start", "\n### Instruction:\n")
+                    # user_message_end = adapter_obj.get("user_end", "")
+                    # assistant_message_start = adapter_obj.get("assistant_start", "\n### Response:\n")
+                    # assistant_message_end = adapter_obj.get("assistant_end", "")
+
+                    system_message_start = adapter_obj.get("system_start", "<|im_start|>system\n")
+                    system_message_end = adapter_obj.get("system_end", "<|im_end|>\n")
+                    user_message_start = adapter_obj.get("user_start", "<|im_start|>user\n")
+                    user_message_end = adapter_obj.get("user_end", "<|im_end|>\n")
+                    assistant_message_start = adapter_obj.get("assistant_start", "<|im_start|>assistant\n")
+                    assistant_message_end = adapter_obj.get("assistant_end", "<|im_end|>\n")
 
                     for message in messages_array:
                         if message['role'] == "system":
@@ -520,6 +528,9 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                     messages_string += assistant_message_start
                     genparams["prompt"] = messages_string
+                    print("###")
+                    print(messages_string)
+                    print("###")
 
             return generate(
                 prompt=genparams.get('prompt', ""),
