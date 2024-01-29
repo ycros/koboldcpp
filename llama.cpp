@@ -9539,9 +9539,15 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
             quantize = true;
         }
 
+
         enum ggml_type new_type;
         void * new_data;
         size_t new_size;
+
+        if (tensor->type == GGML_TYPE_F32) {
+            quantize = true;
+            new_type = GGML_TYPE_F16;
+        }
 
         if (quantize) {
             new_type = quantized_type;
