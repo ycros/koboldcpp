@@ -9535,6 +9535,10 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
         // do not quantize expert gating tensors
         quantize &= name.find("ffn_gate_inp.weight") == std::string::npos;
 
+        if (name == "output.weight") {
+            quantize = true;
+        }
+
         enum ggml_type new_type;
         void * new_data;
         size_t new_size;
@@ -9543,6 +9547,10 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
             new_type = quantized_type;
             if (!params->pure) {
                 new_type = get_k_quant_type(qs, new_type, tensor, ftype);
+            }
+
+            if (name == "output.weight") {
+                new_type = GGML_TYPE_F16;
             }
 
             // If we've decided to quantize to the same type the tensor is already
