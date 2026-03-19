@@ -1,0 +1,2903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KoboldCpp Sampler Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #12110f;
+      --bg-soft: #171512;
+      --surface: #1b1815;
+      --surface-raised: #23201c;
+      --surface-soft: #151310;
+      --surface-code: #100e0c;
+      --border: #342d25;
+      --border-strong: #4a3f33;
+      --text: #ece4d7;
+      --muted: #a99b8a;
+      --primary: #b27b47;
+      --primary-soft: rgba(178, 123, 71, 0.16);
+      --accent: #7b8a5b;
+      --accent-soft: rgba(123, 138, 91, 0.16);
+      --danger: #d17159;
+      --danger-soft: rgba(209, 113, 89, 0.14);
+      --sans: "IBM Plex Sans", sans-serif;
+      --mono: "IBM Plex Mono", monospace;
+      --topbar-h: 52px;
+      --body-pad: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      background-image:
+        radial-gradient(circle at top left, rgba(178, 123, 71, 0.10), transparent 28%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 180px);
+    }
+
+    a {
+      color: #d3a06d;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* ── Topbar ── */
+
+    .topbar {
+      flex: 0 0 var(--topbar-h);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 var(--body-pad);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      z-index: 10;
+    }
+
+    .topbar-title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      color: var(--text);
+    }
+
+    .button-conn-toggle {
+      flex: 0 0 auto;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      width: 22px;
+      min-height: 22px;
+      padding: 0;
+      font-size: 13px;
+      line-height: 1;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+
+    .button-conn-toggle:hover {
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+
+    .button-conn-toggle.collapsed {
+      transform: rotate(180deg);
+    }
+
+    .topbar-sep {
+      width: 1px;
+      height: 22px;
+      background: var(--border);
+      flex: 0 0 1px;
+    }
+
+    .topbar-fields {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .topbar-field {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .topbar-field label {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .topbar-field input,
+    .topbar-field select {
+      height: 30px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 120ms ease;
+    }
+
+    .topbar-field input:focus,
+    .topbar-field select:focus {
+      border-color: var(--primary);
+    }
+
+    .topbar-field input[type="text"] {
+      width: 180px;
+      min-width: 100px;
+    }
+
+    .topbar-field input[type="password"] {
+      width: 110px;
+      min-width: 80px;
+    }
+
+    .topbar-field select {
+      width: 90px;
+    }
+
+    .topbar-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #555;
+      flex: 0 0 8px;
+      transition: background-color 200ms ease;
+    }
+
+    .status-dot.ok {
+      background: #7b8a5b;
+      box-shadow: 0 0 6px rgba(123, 138, 91, 0.5);
+    }
+
+    .status-dot.warn {
+      background: #b27b47;
+      box-shadow: 0 0 6px rgba(178, 123, 71, 0.4);
+    }
+
+    .status-dot.err {
+      background: #d17159;
+      box-shadow: 0 0 6px rgba(209, 113, 89, 0.4);
+    }
+
+    .status-label {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      cursor: default;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex: 0 0 auto;
+    }
+
+    /* ── Buttons ── */
+
+    button {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+      white-space: nowrap;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #17120d;
+      min-height: 34px;
+    }
+
+    .button-primary:hover:not(:disabled) {
+      background: #c58b54;
+      border-color: #c58b54;
+    }
+
+    .button-secondary,
+    .button-ghost {
+      background: var(--surface-soft);
+      border-color: var(--border);
+      color: var(--text);
+      min-height: 30px;
+      font-size: 12px;
+    }
+
+    .button-secondary:hover:not(:disabled),
+    .button-ghost:hover:not(:disabled) {
+      background: #201c18;
+      border-color: var(--border-strong);
+    }
+
+    .button-icon {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      min-height: 30px;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+
+    .button-icon:hover:not(:disabled) {
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: var(--surface-soft);
+    }
+
+    /* ── Workspace ── */
+
+    .workspace {
+      flex: 1 1 0;
+      display: grid;
+      grid-template-columns: minmax(420px, 1.35fr) minmax(340px, 1fr);
+      gap: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .workspace-col {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .workspace-col + .workspace-col {
+      border-left: 1px solid var(--border);
+    }
+
+    /* ── Left Column: Editor ── */
+
+    .editor-zone {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .editor-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--bg-soft);
+      border-bottom: 1px solid var(--border);
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+    }
+
+    .editor-toolbar label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .editor-toolbar select {
+      height: 26px;
+      padding: 0 6px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .editor-toolbar select:focus {
+      border-color: var(--primary);
+    }
+
+    .editor-toolbar .spacer {
+      flex: 1 1 auto;
+    }
+
+    .editor-toolbar .hint {
+      font-size: 11px;
+      color: #6f6558;
+      font-family: var(--mono);
+    }
+
+    .editor-host {
+      flex: 1 1 0;
+      min-height: 200px;
+      overflow: hidden;
+      background: var(--surface-code);
+      border-top: 2px solid var(--primary);
+    }
+
+    .editor-fallback {
+      width: 100%;
+      height: 100%;
+      border: none;
+      padding: 14px;
+      background: var(--surface-code);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.65;
+      resize: none;
+      outline: none;
+    }
+
+    .editor-params {
+      flex: 0 0 auto;
+      border-top: 1px solid var(--border);
+      background: var(--bg-soft);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .editor-params label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .editor-params textarea {
+      width: 100%;
+      min-height: 52px;
+      max-height: 160px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+      padding: 6px 8px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 120ms ease;
+    }
+
+    .editor-params textarea:focus {
+      border-color: var(--primary);
+    }
+
+    /* ── Right Column: Prompt + Output + Inspector ── */
+
+    .prompt-strip {
+      flex: 0 0 auto;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-soft);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .prompt-strip textarea {
+      width: 100%;
+      min-height: 60px;
+      max-height: 200px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.55;
+      padding: 8px 10px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 120ms ease;
+    }
+
+    .prompt-strip textarea:focus {
+      border-color: var(--primary);
+    }
+
+    .prompt-strip textarea::placeholder {
+      color: #88796a;
+    }
+
+    .prompt-params {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .prompt-params .field-inline {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .prompt-params label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .prompt-params input[type="number"] {
+      width: 72px;
+      height: 28px;
+      padding: 0 6px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .prompt-params input[type="number"]:focus {
+      border-color: var(--primary);
+    }
+
+    .results-body {
+      flex: 1 1 0;
+      min-height: 0;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* ── Summary strip ── */
+
+    .summary-strip {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .summary-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface-soft);
+      font-size: 11px;
+    }
+
+    .summary-chip span {
+      color: var(--muted);
+    }
+
+    .summary-chip strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ── Error / Compare banners ── */
+
+    .error-box,
+    .compare-banner {
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.5;
+      border: 1px solid var(--border);
+    }
+
+    .error-box {
+      display: none;
+      background: var(--danger-soft);
+      color: #f2c2b6;
+      border-color: rgba(209, 113, 89, 0.38);
+    }
+
+    .compare-banner {
+      display: none;
+      background: var(--primary-soft);
+      color: #e4be95;
+      border-color: rgba(178, 123, 71, 0.38);
+    }
+
+    /* ── Output text ── */
+
+    .output-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .output-text {
+      min-height: 120px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-code);
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.75;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .output-token {
+      display: inline;
+      padding: 0.04em 0.12em;
+      margin: 0 0.02em;
+      border-radius: 3px;
+      color: var(--text);
+      background: rgba(178, 123, 71, var(--token-alpha, 0.12));
+      cursor: pointer;
+      transition: background-color 120ms ease;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+    }
+
+    .output-token:hover,
+    .output-token.selected {
+      background: rgba(123, 138, 91, var(--token-alpha-selected, 0.18));
+    }
+
+    .output-token.changed {
+      text-decoration: underline wavy rgba(209, 113, 89, 0.8);
+      text-underline-offset: 0.16em;
+    }
+
+    .output-placeholder {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* ── Token Inspector ── */
+
+    .inspector-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .inspector-card {
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #181511;
+      border: 1px solid var(--border);
+      display: grid;
+      gap: 6px;
+    }
+
+    .inspector-token {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .inspector-meta-strip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: #151310;
+      border: 1px solid var(--border);
+    }
+
+    .inspector-meta-token {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      padding-right: 4px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .inspector-meta-strip .summary-chip {
+      padding: 2px 6px;
+      font-size: 10px;
+    }
+
+    .inspector-meta-strip .summary-chip strong {
+      font-size: 11px;
+    }
+
+    .trace-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .trace-table-wrap {
+      max-height: 260px;
+      overflow: auto;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #11100d;
+    }
+
+    .trace-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .trace-table th,
+    .trace-table td {
+      padding: 4px 7px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid rgba(236, 228, 215, 0.06);
+    }
+
+    .trace-table th {
+      position: sticky;
+      top: 0;
+      background: #181511;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .trace-table td {
+      color: var(--text);
+    }
+
+    .trace-table tr[data-prob-pct] {
+      background: linear-gradient(
+        to right,
+        rgba(178, 123, 71, 0.13) var(--bar-w, 0%),
+        transparent var(--bar-w, 0%)
+      );
+    }
+
+    .log-list {
+      display: grid;
+      gap: 4px;
+    }
+
+    .log-item {
+      padding: 6px 8px;
+      border-radius: 5px;
+      background: #12100e;
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+    }
+
+    /* ── Alternatives ── */
+
+    .alt-list {
+      display: grid;
+      gap: 4px;
+    }
+
+    .alt-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 72px;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .alt-bar {
+      position: relative;
+      min-width: 0;
+      height: 28px;
+      overflow: hidden;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: #12100e;
+    }
+
+    .alt-bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--width, 0%);
+      background: rgba(178, 123, 71, 0.72);
+    }
+
+    .alt-bar-label {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      height: 100%;
+      padding: 0 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+    }
+
+    .field-label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .small {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .mono {
+      font-family: var(--mono);
+    }
+
+    /* ── Below-fold: Sampler Pipeline Config ── */
+
+    .below-fold {
+      flex: 0 0 auto;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .pipeline-summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      user-select: none;
+    }
+
+    .pipeline-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .pipeline-summary-text {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pipeline-summary-info {
+      font-weight: 400;
+      font-size: 12px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pipeline-summary::after {
+      content: "+";
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 14px;
+      flex: 0 0 auto;
+    }
+
+    .below-fold[open] .pipeline-summary {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .below-fold[open] .pipeline-summary::after {
+      content: "-";
+    }
+
+    .pipeline-body {
+      max-height: 70vh;
+      overflow-y: auto;
+      padding: 14px;
+      display: grid;
+      gap: 14px;
+    }
+
+    /* ── Temperature prominent ── */
+
+    .temp-strip {
+      display: flex;
+      gap: 10px;
+      align-items: end;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-raised);
+    }
+
+    .temp-strip .field {
+      display: grid;
+      gap: 4px;
+    }
+
+    .temp-strip label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .temp-strip input[type="number"] {
+      width: 80px;
+      height: 30px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      outline: none;
+    }
+
+    .temp-strip input[type="number"]:focus {
+      border-color: var(--primary);
+    }
+
+    /* ── Order lane ── */
+
+    .order-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .order-lane {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 38px;
+      padding: 4px;
+      background: var(--surface-soft);
+      border: 1px dashed var(--border-strong);
+      border-radius: 8px;
+    }
+
+    .order-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border: 1px solid #43382d;
+      border-radius: 6px;
+      background: #1b1713;
+      font-size: 12px;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .order-pill.sortable-ghost {
+      opacity: 0.3;
+    }
+
+    .order-pill.sortable-chosen,
+    .order-pill.sortable-drag {
+      border-color: var(--primary);
+      background: #261d15;
+    }
+
+    .order-pill-handle {
+      font-family: var(--mono);
+      color: var(--muted);
+      padding-right: 2px;
+    }
+
+    /* ── Sampler cards ── */
+
+    .sampler-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 8px;
+    }
+
+    .sampler-card {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #1c1916;
+      transition: opacity 120ms ease, border-color 120ms ease, background-color 120ms ease;
+    }
+
+    .sampler-card.disabled {
+      opacity: 0.5;
+      background: #171411;
+    }
+
+    .sampler-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .sampler-toggle {
+      display: flex;
+      gap: 8px;
+      align-items: start;
+      min-width: 0;
+    }
+
+    .sampler-title {
+      min-width: 0;
+    }
+
+    .sampler-title strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.3;
+    }
+
+    .sampler-id {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      padding: 2px 5px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--surface-soft);
+      white-space: nowrap;
+    }
+
+    .sampler-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .sampler-fields .field {
+      display: grid;
+      gap: 3px;
+    }
+
+    .sampler-fields label {
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .sampler-fields input[type="number"] {
+      width: 100%;
+      height: 28px;
+      padding: 0 6px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .sampler-fields input[type="number"]:focus {
+      border-color: var(--primary);
+    }
+
+    .checkbox-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    input[type="checkbox"] {
+      accent-color: var(--primary);
+    }
+
+    .checkbox-row input[type="checkbox"],
+    .sampler-toggle input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      margin: 1px 0 0;
+    }
+
+    /* ── Advanced fields ── */
+
+    .advanced-section {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-raised);
+      overflow: hidden;
+    }
+
+    .advanced-section summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      background: #1e1a16;
+    }
+
+    .advanced-section summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .advanced-section summary::after {
+      content: "+";
+      font-family: var(--mono);
+      color: var(--muted);
+      flex: 0 0 auto;
+    }
+
+    .advanced-section[open] summary {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .advanced-section[open] summary::after {
+      content: "-";
+    }
+
+    .advanced-body {
+      padding: 10px 12px;
+    }
+
+    .advanced-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+    }
+
+    .advanced-grid .field {
+      display: grid;
+      gap: 3px;
+    }
+
+    .advanced-grid label {
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .advanced-grid input[type="number"] {
+      width: 100%;
+      height: 28px;
+      padding: 0 6px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .advanced-grid input[type="number"]:focus {
+      border-color: var(--primary);
+    }
+
+    /* ── Raw JSON sections ── */
+
+    .raw-section {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-raised);
+      overflow: hidden;
+    }
+
+    .raw-section summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .raw-section summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .raw-section summary::after {
+      content: "+";
+      font-family: var(--mono);
+      color: var(--muted);
+      flex: 0 0 auto;
+    }
+
+    .raw-section[open] summary {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .raw-section[open] summary::after {
+      content: "-";
+    }
+
+    .raw-body {
+      padding: 8px 10px;
+    }
+
+    .details-pre {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: var(--surface-code);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.55;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 300px;
+    }
+
+    /* ── Badges ── */
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 11px;
+      background: var(--surface-soft);
+    }
+
+    .badge.ok {
+      color: #bdcba0;
+      background: var(--accent-soft);
+      border-color: rgba(123, 138, 91, 0.34);
+    }
+
+    .badge.warn {
+      color: #dfb485;
+      background: var(--primary-soft);
+      border-color: rgba(178, 123, 71, 0.36);
+    }
+
+    .badge.danger {
+      color: #f0b8aa;
+      background: var(--danger-soft);
+      border-color: rgba(209, 113, 89, 0.34);
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .inline-note {
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1.5;
+      border: 1px solid var(--border);
+      background: #181511;
+      color: var(--muted);
+    }
+
+    #example-note:empty {
+      display: none;
+    }
+
+    #init-debug-block:empty {
+      display: none;
+    }
+
+    .init-debug-card {
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-raised);
+    }
+
+    /* ── Responsive ── */
+
+    @media (max-width: 900px) {
+      .workspace {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 1fr;
+      }
+
+      .workspace-col + .workspace-col {
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+
+      .topbar-fields {
+        display: none;
+      }
+
+      .trace-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .prompt-params {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .sampler-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .advanced-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- ── Topbar ── -->
+  <header class="topbar">
+    <div class="topbar-title">Sampler Lab</div>
+    <button class="button-conn-toggle" id="toggle-conn-button" title="Toggle connection fields">&lsaquo;</button>
+    <div class="topbar-sep" id="conn-sep"></div>
+    <div class="topbar-fields" id="conn-fields">
+      <div class="topbar-field">
+        <label for="endpoint-input">Endpoint</label>
+        <input id="endpoint-input" type="text" placeholder="http://localhost:5001">
+      </div>
+      <div class="topbar-field">
+        <label for="api-key-input">Token</label>
+        <input id="api-key-input" type="password" placeholder="Optional">
+      </div>
+      <div class="topbar-field">
+        <label for="api-mode-select">Mode</label>
+        <select id="api-mode-select">
+          <option value="chat">Chat</option>
+          <option value="generate">Generate</option>
+        </select>
+      </div>
+    </div>
+    <div class="topbar-status" id="status-indicator" title="Checking server...">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-label" id="status-label">Connecting...</span>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-actions">
+      <button class="button-icon" id="copy-request-button" title="Copy request JSON">JSON</button>
+      <button class="button-primary" id="run-button">Run inference</button>
+    </div>
+  </header>
+
+  <!-- ── Main Workspace ── -->
+  <div class="workspace">
+    <!-- Left: Editor -->
+    <div class="workspace-col">
+      <div class="editor-zone">
+        <div class="editor-toolbar">
+          <label for="example-select">Preset</label>
+          <select id="example-select" title="Choose a preset"></select>
+          <button class="button-ghost" id="apply-preset-button" type="button">Load</button>
+          <a class="small mono" href="/samplerlab/kcpp_sampler_api.d.ts" target="_blank" rel="noopener noreferrer">d.ts</a>
+          <div class="spacer"></div>
+          <span class="hint" id="editor-status">loading...</span>
+          <span class="hint">Ctrl+Enter to run</span>
+        </div>
+        <div class="editor-host" id="sampler-editor-host">
+          <textarea id="sampler-editor-fallback" class="editor-fallback"></textarea>
+        </div>
+        <div class="editor-params">
+          <label for="sampler-params-input">Sampler Params (JSON)</label>
+          <textarea id="sampler-params-input" placeholder="{&#10;  &quot;bias&quot;: 1.5&#10;}"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Prompt + Output + Inspector -->
+    <div class="workspace-col">
+      <div class="prompt-strip">
+        <textarea id="prompt-input" placeholder="Write a vivid one-paragraph description of a lighthouse at dawn."></textarea>
+        <div class="prompt-params">
+          <div class="field-inline">
+            <label for="max-length-input" id="prompt-label">Max tokens</label>
+            <input id="max-length-input" type="number" min="1" step="1" value="48">
+          </div>
+          <div class="field-inline">
+            <label for="max-context-input">Context</label>
+            <input id="max-context-input" type="number" min="256" step="1" value="2048">
+          </div>
+          <div class="field-inline">
+            <label for="seed-input">Seed</label>
+            <input id="seed-input" type="number" step="1" value="12345">
+          </div>
+        </div>
+      </div>
+
+      <div class="results-body" id="results-body">
+        <div class="inline-note" id="example-note"></div>
+        <div class="error-box" id="error-box"></div>
+        <div class="compare-banner" id="compare-banner"></div>
+        <div class="summary-strip" id="summary-strip"></div>
+        <div id="init-debug-block"></div>
+        <div class="badge-row" id="run-badges"></div>
+
+        <div class="output-section-title">Output</div>
+        <div class="output-text" id="output-text">
+          <div class="output-placeholder">Run inference to see generated tokens here.</div>
+        </div>
+
+        <div class="output-section-title">Token Inspector</div>
+        <div class="inspector-grid" id="inspector-grid">
+          <div class="output-placeholder">Click a token above to inspect it.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Below-fold: Sampler Pipeline Config ── -->
+  <details class="below-fold" id="pipeline-details">
+    <summary class="pipeline-summary">
+      <div class="pipeline-summary-text">
+        <span>Sampler Pipeline</span>
+        <span class="pipeline-summary-info" id="pipeline-status-badge">0 active samplers</span>
+      </div>
+    </summary>
+    <div class="pipeline-body">
+      <!-- Temperature: prominent -->
+      <div class="temp-strip" id="temp-strip"></div>
+
+      <!-- Ordered chain -->
+      <div>
+        <div class="order-section-title" style="margin-bottom: 6px;">Ordered Chain (drag to reorder)</div>
+        <div class="order-lane" id="order-lane">
+          <div class="output-placeholder">Enable samplers below to populate the chain.</div>
+        </div>
+      </div>
+
+      <!-- Sampler cards -->
+      <div>
+        <div class="order-section-title" style="margin-bottom: 6px;">Samplers</div>
+        <div class="sampler-grid" id="sampler-grid"></div>
+      </div>
+
+      <!-- Advanced -->
+      <details class="advanced-section">
+        <summary>Additional Native Settings</summary>
+        <div class="advanced-body">
+          <div class="advanced-grid" id="advanced-grid"></div>
+        </div>
+      </details>
+
+      <!-- Raw JSON -->
+      <details class="raw-section">
+        <summary>Raw Request JSON</summary>
+        <div class="raw-body">
+          <pre class="details-pre" id="request-json">{}</pre>
+        </div>
+      </details>
+
+      <details class="raw-section">
+        <summary>Raw Response JSON</summary>
+        <div class="raw-body">
+          <pre class="details-pre" id="response-json">{}</pre>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script>
+    (() => {
+      const STORAGE_KEY = 'koboldcpp-samplerlab-state-v4';
+      const STORAGE_FALLBACK_KEYS = [
+        'koboldcpp-samplerlab-state-v4',
+        'koboldcpp-samplerlab-state-v3',
+        'koboldcpp-samplerlab-state-v2',
+        'koboldcpp-samplerlab-state-v1',
+      ];
+      const DTS_PATH = '/samplerlab/kcpp_sampler_api.d.ts';
+      const MONACO_VERSION = '0.52.2';
+
+      const ORDERED_SAMPLERS = [
+        {
+          key: 'rep_pen',
+          samplerId: 6,
+          label: 'Repetition Penalty',
+          hint: 'Penalize recent tokens before later ordered samplers run.',
+          enabled: false,
+          fields: [
+            { key: 'rep_pen', label: 'Penalty', value: 1.05, step: 0.01, min: 0.1 },
+            { key: 'rep_pen_range', label: 'Range', value: 360, step: 1, min: 0 },
+            { key: 'rep_pen_slope', label: 'Slope', value: 0.7, step: 0.01, min: 0 },
+            { key: 'presence_penalty', label: 'Presence', value: 0, step: 0.01 }
+          ]
+        },
+        {
+          key: 'top_k',
+          samplerId: 0,
+          label: 'Top-K',
+          hint: 'Keep only the K strongest candidates.',
+          enabled: false,
+          fields: [
+            { key: 'top_k', label: 'K', value: 100, step: 1, min: 1 }
+          ]
+        },
+        {
+          key: 'top_a',
+          samplerId: 1,
+          label: 'Top-A',
+          hint: 'Cut below A * best_prob^2.',
+          enabled: false,
+          fields: [
+            { key: 'top_a', label: 'A', value: 0, step: 0.01, min: 0, max: 1 }
+          ]
+        },
+        {
+          key: 'tfs',
+          samplerId: 3,
+          label: 'Tail Free',
+          hint: 'Trim low-value tail mass.',
+          enabled: false,
+          fields: [
+            { key: 'tfs', label: 'Z', value: 1, step: 0.01, min: 0, max: 1 }
+          ]
+        },
+        {
+          key: 'typical',
+          samplerId: 4,
+          label: 'Typical',
+          hint: 'Sample around distribution entropy.',
+          enabled: false,
+          fields: [
+            { key: 'typical', label: 'P', value: 1, step: 0.01, min: 0, max: 1 }
+          ]
+        },
+        {
+          key: 'top_p',
+          samplerId: 2,
+          label: 'Top-P',
+          hint: 'Keep tokens until cumulative mass exceeds P.',
+          enabled: false,
+          fields: [
+            { key: 'top_p', label: 'P', value: 0.92, step: 0.01, min: 0, max: 1 }
+          ]
+        },
+        {
+          key: 'custom',
+          samplerId: 7,
+          label: 'Custom JS',
+          hint: 'Run a Duktape sampler inside the ordered chain.',
+          enabled: true,
+          fields: []
+        },
+        {
+          key: 'temperature',
+          samplerId: 5,
+          label: 'Temperature',
+          hint: 'Scale logits near the end of the ordered chain.',
+          enabled: true,
+          fields: [
+            { key: 'temperature', label: 'Temp', value: 0.75, step: 0.01, min: 0.01 },
+            { key: 'dynatemp_range', label: 'Dyn Range', value: 0, step: 0.01, min: 0 },
+            { key: 'dynatemp_exponent', label: 'Dyn Exp', value: 1, step: 0.01, min: 0 },
+            { key: 'smoothing_factor', label: 'Smooth', value: 0, step: 0.01, min: 0 }
+          ]
+        }
+      ];
+
+      const ADVANCED_FIELDS = [
+        { key: 'min_p', label: 'Min-P', value: 0, step: 0.01, min: 0, max: 1 },
+        { key: 'nsigma', label: 'Top-N-Sigma', value: 0, step: 0.01, min: 0 },
+        { key: 'smoothing_curve', label: 'Smoothing Curve', value: 1, step: 0.01, min: 0 },
+        { key: 'xtc_threshold', label: 'XTC Threshold', value: 0.2, step: 0.01, min: 0, max: 1 },
+        { key: 'xtc_probability', label: 'XTC Probability', value: 0, step: 0.01, min: 0, max: 1 },
+        { key: 'dry_multiplier', label: 'DRY Multiplier', value: 0, step: 0.01, min: 0 },
+        { key: 'dry_base', label: 'DRY Base', value: 1.75, step: 0.01, min: 0 },
+        { key: 'dry_allowed_length', label: 'DRY Allowed', value: 2, step: 1, min: 0 },
+        { key: 'dry_penalty_last_n', label: 'DRY Last-N', value: 320, step: 1, min: 0 },
+        { key: 'adaptive_target', label: 'Adaptive Target', value: -1, step: 0.01 },
+        { key: 'adaptive_decay', label: 'Adaptive Decay', value: 0.9, step: 0.01, min: 0.01, max: 0.99 },
+        { key: 'mirostat', label: 'Mirostat', value: 0, step: 1, min: 0, max: 2 },
+        { key: 'mirostat_tau', label: 'Mirostat Tau', value: 5.0, step: 0.01, min: 0 },
+        { key: 'mirostat_eta', label: 'Mirostat Eta', value: 0.1, step: 0.01, min: 0 },
+        { key: 'trim_stop', label: 'Trim Stop', value: true, checkbox: true }
+      ];
+
+      const EXAMPLES = [
+        {
+          key: 'hello',
+          label: 'Hello World / passthrough',
+          note: 'Minimal typed skeleton. Enable the Custom JS sampler card to actually send this source in the request.',
+          code: `// @ts-check\n\n/** @type {KoboldSamplerInitFunction} */\nfunction init(params, s) {\n  void params;\n  void s;\n}\n\n/** @type {KoboldSamplerFunction} */\nfunction sample(s) {\n  return s.pick();\n}\n`,
+          params: '{}'
+        },
+        {
+          key: 'runner-up-bias',
+          label: 'Runner-up bias demo',
+          note: 'Keep the seed fixed, set max length to 1, raise bias, rerun, then inspect token 0 to see the alternative bars move.',
+          code: `// @ts-check\n\nvar cfg = { bias: 0.0 };\n\n/** @type {KoboldSamplerInitFunction} */\nfunction init(params) {\n  cfg = Object.assign({}, cfg, params || {});\n}\n\n/** @type {KoboldSamplerFunction} */\nfunction sample(s) {\n  if (s.size() > 1 && cfg.bias) {\n    s.addLogit(1, Number(cfg.bias));\n  }\n}\n`,
+          params: '{\n  "bias": 1.5\n}'
+        },
+        {
+          key: 'top-k-top-p',
+          label: 'Native-style top-k then top-p',
+          note: 'Useful for validating the JS surface against part of the native sampler chain.',
+          code: `// @ts-check\n\n/** @type {KoboldSamplerFunction} */\nfunction sample(s) {\n  s.topK(80);\n  s.topP(0.92, 1);\n  return s.pick();\n}\n`,
+          params: '{}'
+        }
+      ];
+
+      const ui = {};
+      let caps = null;
+      let currentRun = null;
+      let previousRun = null;
+      let selectedTokenIndex = 0;
+      let orderSortable = null;
+      let monacoReadyPromise = null;
+      let monacoEditor = null;
+      let monacoModel = null;
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function formatLogprob(logprob) {
+        return typeof logprob === 'number' ? logprob.toFixed(5) : 'n/a';
+      }
+
+      function logprobToProbability(logprob) {
+        if (typeof logprob !== 'number') return 0;
+        return Math.exp(clamp(logprob, -40, 0));
+      }
+
+      function formatProbability(probability) {
+        return `${(probability * 100).toFixed(probability < 0.01 ? 3 : 2)}%`;
+      }
+
+      function prettyToken(token) {
+        if (token === '') return '(empty)';
+        return token.replaceAll('\t', '\\t').replaceAll('\n', '\\n\n');
+      }
+
+      function getOrderedSamplerKeys() {
+        return ORDERED_SAMPLERS.map((sampler) => sampler.key);
+      }
+
+      function loadState() {
+        const currentRaw = localStorage.getItem(STORAGE_KEY);
+        if (currentRaw) {
+          try {
+            return JSON.parse(currentRaw);
+          } catch (_err) {
+            return {};
+          }
+        }
+
+        for (const key of STORAGE_FALLBACK_KEYS.slice(1)) {
+          try {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            const legacy = JSON.parse(raw);
+            return {
+              endpoint: legacy.endpoint,
+              apiKey: legacy.apiKey,
+              prompt: legacy.prompt,
+              maxLength: legacy.maxLength,
+              maxContext: legacy.maxContext,
+              seed: legacy.seed,
+              params: legacy.params || {},
+              samplerCode: legacy.samplerCode || '',
+              samplerParams: legacy.samplerParams || '',
+              example: legacy.example || 'runner-up-bias',
+            };
+          } catch (_err) {
+            // keep trying older keys
+          }
+        }
+
+        return {};
+      }
+
+      function defaultOrder() {
+        return ['rep_pen', 'top_k', 'top_a', 'tfs', 'typical', 'top_p', 'custom', 'temperature'];
+      }
+
+      function getSavedOrder() {
+        const state = loadState();
+        const savedOrder = Array.isArray(state.pipelineOrder) ? state.pipelineOrder : defaultOrder();
+        const seen = new Set();
+        const merged = savedOrder.filter((key) => getOrderedSamplerKeys().includes(key) && !seen.has(key) && seen.add(key));
+        getOrderedSamplerKeys().forEach((key) => {
+          if (!seen.has(key)) merged.push(key);
+        });
+        return merged;
+      }
+
+      function getEnabledState(key, fallback) {
+        const state = loadState();
+        if (state.samplerEnabled && key in state.samplerEnabled) {
+          return Boolean(state.samplerEnabled[key]);
+        }
+        return fallback;
+      }
+
+      function getParamState(key, fallback) {
+        const state = loadState();
+        if (state.params && key in state.params) {
+          return state.params[key];
+        }
+        return fallback;
+      }
+
+      function hasWhitespace(token) {
+        return /[\s]/.test(token);
+      }
+
+      function visualizeWhitespace(token) {
+        if (token === '') {
+          return '(empty token)';
+        }
+        return token
+          .replaceAll(' ', '␠')
+          .replaceAll('\t', '⇥')
+          .replaceAll('\r', '␍')
+          .replaceAll('\n', '↵');
+      }
+
+      function escapedToken(token) {
+        if (token === '') {
+          return '""';
+        }
+        return `"${token
+          .replaceAll('\\', '\\\\')
+          .replaceAll('\r', '\\r')
+          .replaceAll('\n', '\\n')
+          .replaceAll('\t', '\\t')
+          .replaceAll('"', '\\"')}"`;
+      }
+
+      function bytesToHexLabel(bytes) {
+        if (!Array.isArray(bytes) || !bytes.length) {
+          return '(empty token)';
+        }
+        return bytes.map((value) => `0x${Number(value).toString(16).padStart(2, '0').toUpperCase()}`).join(' ');
+      }
+
+      function displayTokenOrBytes(token, bytes) {
+        if (token && token.length && !token.includes('\uFFFD')) {
+          return hasWhitespace(token) ? visualizeWhitespace(token) : prettyToken(token);
+        }
+        return bytesToHexLabel(bytes);
+      }
+
+      function titleTokenOrBytes(token, bytes) {
+        if (token && token.length && !token.includes('\uFFFD')) {
+          return hasWhitespace(token) ? escapedToken(token) : token;
+        }
+        return bytesToHexLabel(bytes);
+      }
+
+      function updatePresetTooltips(note) {
+        ui.exampleSelect.title = note;
+        ui.applyPresetButton.title = note;
+      }
+
+      function isSamplerEnabledNow(key, fallback) {
+        const card = ui.samplerGrid ? ui.samplerGrid.querySelector(`[data-key="${key}"]`) : null;
+        const checkbox = card ? card.querySelector('.sampler-enabled') : null;
+        if (checkbox) {
+          return checkbox.checked;
+        }
+        return getEnabledState(key, fallback);
+      }
+
+      function setEditorStatus(text) {
+        ui.editorStatus.textContent = text;
+      }
+
+      function setError(message = '') {
+        if (!message) {
+          ui.errorBox.style.display = 'none';
+          ui.errorBox.textContent = '';
+          return;
+        }
+        ui.errorBox.style.display = 'block';
+        ui.errorBox.textContent = message;
+      }
+
+      function getSamplerCodeValue() {
+        return monacoEditor ? monacoEditor.getValue() : ui.samplerEditorFallback.value;
+      }
+
+      function setSamplerCodeValue(value) {
+        if (monacoEditor) {
+          monacoEditor.setValue(value);
+        } else {
+          ui.samplerEditorFallback.value = value;
+        }
+      }
+
+      function attachSamplerEditorChange(handler) {
+        if (monacoEditor) {
+          monacoEditor.onDidChangeModelContent(handler);
+        } else {
+          ui.samplerEditorFallback.addEventListener('input', handler);
+        }
+      }
+
+      function createField(definition, valueOverride = null) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'field';
+
+        if (definition.checkbox) {
+          const label = document.createElement('label');
+          label.className = 'checkbox-row';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.dataset.param = definition.key;
+          input.checked = Boolean(valueOverride !== null ? valueOverride : definition.value);
+          const span = document.createElement('span');
+          span.textContent = definition.label;
+          label.appendChild(input);
+          label.appendChild(span);
+          wrapper.appendChild(label);
+          return { wrapper, input };
+        }
+
+        const label = document.createElement('label');
+        label.textContent = definition.label;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.dataset.param = definition.key;
+        input.step = definition.step ?? 'any';
+        if (definition.min !== undefined) input.min = definition.min;
+        if (definition.max !== undefined) input.max = definition.max;
+        input.value = valueOverride !== null ? valueOverride : definition.value;
+        wrapper.appendChild(label);
+        wrapper.appendChild(input);
+        return { wrapper, input };
+      }
+
+      function buildFullOrderFromLane() {
+        const activeOrder = Array.from(ui.orderLane.querySelectorAll('.order-pill')).map((pill) => pill.dataset.key);
+        const previous = getSavedOrder();
+        const inactive = previous.filter((key) => !activeOrder.includes(key));
+        return activeOrder.concat(inactive);
+      }
+
+      function saveState() {
+        const state = {
+          endpoint: ui.endpointInput.value,
+          apiKey: ui.apiKeyInput.value,
+          apiMode: ui.apiModeSelect.value,
+          prompt: ui.promptInput.value,
+          maxLength: ui.maxLengthInput.value,
+          maxContext: ui.maxContextInput.value,
+          seed: ui.seedInput.value,
+          pipelineOrder: buildFullOrderFromLane(),
+          samplerEnabled: {},
+          params: {},
+          samplerCode: getSamplerCodeValue(),
+          samplerParams: ui.samplerParamsInput.value,
+          example: ui.exampleSelect.value,
+        };
+
+        ui.samplerGrid.querySelectorAll('.sampler-card').forEach((card) => {
+          const checkbox = card.querySelector('.sampler-enabled');
+          state.samplerEnabled[card.dataset.key] = checkbox ? checkbox.checked : false;
+          card.querySelectorAll('[data-param]').forEach((input) => {
+            state.params[input.dataset.param] = input.type === 'checkbox' ? input.checked : input.value;
+          });
+        });
+
+        // Temperature is always enabled in the new layout (no toggle)
+        state.samplerEnabled['temperature'] = true;
+
+        // Also grab temperature params from the temp strip
+        ui.tempStrip.querySelectorAll('[data-param]').forEach((input) => {
+          state.params[input.dataset.param] = input.type === 'checkbox' ? input.checked : input.value;
+        });
+
+        ui.advancedGrid.querySelectorAll('[data-param]').forEach((input) => {
+          state.params[input.dataset.param] = input.type === 'checkbox' ? input.checked : input.value;
+        });
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      }
+
+      function restoreBaseState() {
+        const state = loadState();
+        ui.endpointInput.value = state.endpoint || window.location.origin;
+        ui.apiKeyInput.value = state.apiKey || '';
+        ui.apiModeSelect.value = state.apiMode || 'chat';
+        ui.promptInput.value = state.prompt || 'Write a vivid one-paragraph description of a lighthouse at dawn.';
+        ui.maxLengthInput.value = state.maxLength || 48;
+        ui.maxContextInput.value = state.maxContext || 2048;
+        ui.seedInput.value = state.seed || 12345;
+        updatePromptLabel();
+      }
+
+      function updatePromptLabel() {
+        ui.promptLabel.textContent = ui.apiModeSelect.value === 'chat' ? 'Max tokens' : 'Max length';
+      }
+
+      function renderTempStrip() {
+        ui.tempStrip.innerHTML = '';
+        const tempSampler = ORDERED_SAMPLERS.find((s) => s.key === 'temperature');
+        if (!tempSampler) return;
+        tempSampler.fields.forEach((field) => {
+          const div = document.createElement('div');
+          div.className = 'field';
+          const label = document.createElement('label');
+          label.textContent = field.label;
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.dataset.param = field.key;
+          input.step = field.step ?? 'any';
+          if (field.min !== undefined) input.min = field.min;
+          if (field.max !== undefined) input.max = field.max;
+          input.value = getParamState(field.key, field.value);
+          input.addEventListener('input', () => {
+            // Sync to sampler card if it exists
+            const cardInput = ui.samplerGrid.querySelector(`[data-param="${field.key}"]`);
+            if (cardInput) cardInput.value = input.value;
+            saveState();
+          });
+          div.appendChild(label);
+          div.appendChild(input);
+          ui.tempStrip.appendChild(div);
+        });
+      }
+
+      function getPipelineSummaryText() {
+        const savedOrder = getSavedOrder();
+        const activeKeys = savedOrder.filter((key) => {
+          const sampler = ORDERED_SAMPLERS.find((item) => item.key === key);
+          return sampler && isSamplerEnabledNow(key, sampler.enabled);
+        });
+        if (!activeKeys.length) return '0 active samplers';
+        const labels = activeKeys.map((key) => {
+          const sampler = ORDERED_SAMPLERS.find((item) => item.key === key);
+          if (key === 'temperature') {
+            const tempInput = ui.tempStrip.querySelector('[data-param="temperature"]');
+            const val = tempInput ? tempInput.value : '0.75';
+            return `Temp (${val})`;
+          }
+          return sampler ? sampler.label : key;
+        });
+        return labels.join(' \u2192 ');
+      }
+
+      function renderOrderLane() {
+        const savedOrder = getSavedOrder();
+        const activeKeys = savedOrder.filter((key) => {
+          const sampler = ORDERED_SAMPLERS.find((item) => item.key === key);
+          return sampler && isSamplerEnabledNow(key, sampler.enabled);
+        });
+
+        ui.orderLane.innerHTML = '';
+        if (!activeKeys.length) {
+          ui.orderLane.innerHTML = '<div class="output-placeholder">Enable samplers below to populate the chain.</div>';
+          ui.pipelineStatusBadge.textContent = '0 active samplers';
+          return;
+        }
+
+        activeKeys.forEach((key) => {
+          const sampler = ORDERED_SAMPLERS.find((item) => item.key === key);
+          const pill = document.createElement('div');
+          pill.className = 'order-pill';
+          pill.dataset.key = key;
+          pill.title = sampler.hint;
+          pill.innerHTML = `<span class="order-pill-handle">::</span><span>${escapeHtml(sampler.label)}</span><span class="mono small">${sampler.samplerId}</span>`;
+          ui.orderLane.appendChild(pill);
+        });
+
+        ui.pipelineStatusBadge.textContent = getPipelineSummaryText();
+
+        if (orderSortable) {
+          orderSortable.destroy();
+        }
+        orderSortable = Sortable.create(ui.orderLane, {
+          animation: 120,
+          handle: '.order-pill-handle',
+          ghostClass: 'sortable-ghost',
+          chosenClass: 'sortable-chosen',
+          dragClass: 'sortable-drag',
+          onEnd() {
+            saveState();
+          },
+        });
+      }
+
+      function renderSamplerCards() {
+        ui.samplerGrid.innerHTML = '';
+        const savedOrder = getSavedOrder();
+
+        savedOrder.forEach((key) => {
+          const sampler = ORDERED_SAMPLERS.find((item) => item.key === key);
+          if (!sampler) return;
+          // Skip temperature from the sampler grid - it's in the temp strip
+          if (sampler.key === 'temperature') return;
+
+          const card = document.createElement('div');
+          card.className = 'sampler-card';
+          card.dataset.key = sampler.key;
+          const enabled = getEnabledState(sampler.key, sampler.enabled);
+          if (!enabled) card.classList.add('disabled');
+
+          const head = document.createElement('div');
+          head.className = 'sampler-head';
+
+          const toggle = document.createElement('label');
+          toggle.className = 'sampler-toggle';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.className = 'sampler-enabled';
+          checkbox.checked = enabled;
+          checkbox.disabled = sampler.key === 'custom' && caps && !caps.customsamplers;
+          if (checkbox.disabled) checkbox.checked = false;
+
+          const title = document.createElement('div');
+          title.className = 'sampler-title';
+          title.title = sampler.hint;
+          title.innerHTML = `<strong>${escapeHtml(sampler.label)}</strong>`;
+          card.title = sampler.hint;
+
+          toggle.appendChild(checkbox);
+          toggle.appendChild(title);
+          head.appendChild(toggle);
+
+          const slot = document.createElement('div');
+          slot.className = 'sampler-id';
+          slot.textContent = `${sampler.samplerId}`;
+          head.appendChild(slot);
+
+          card.appendChild(head);
+
+          const fields = document.createElement('div');
+          fields.className = 'sampler-fields';
+          sampler.fields.forEach((field) => {
+            const { wrapper, input } = createField(field, getParamState(field.key, field.value));
+            input.addEventListener('input', saveState);
+            fields.appendChild(wrapper);
+          });
+
+          card.appendChild(fields);
+          checkbox.addEventListener('change', () => {
+            card.classList.toggle('disabled', !checkbox.checked);
+            renderOrderLane();
+            saveState();
+          });
+          if (checkbox.disabled) {
+            checkbox.title = 'This server is not accepting request-provided samplers. Relaunch KoboldCpp with --allowcustomsamplers.';
+          }
+
+          ui.samplerGrid.appendChild(card);
+        });
+
+        // Also add temperature card (hidden, for data collection during save)
+        // Actually, temperature fields are in tempStrip, so we handle that in collectParams
+      }
+
+      function renderAdvancedFields() {
+        ui.advancedGrid.innerHTML = '';
+        ADVANCED_FIELDS.forEach((field) => {
+          const { wrapper, input } = createField(field, getParamState(field.key, field.value));
+          input.addEventListener('input', saveState);
+          ui.advancedGrid.appendChild(wrapper);
+        });
+      }
+
+      function collectParams() {
+        const params = {};
+        ui.samplerGrid.querySelectorAll('[data-param]').forEach((input) => {
+          params[input.dataset.param] = input.type === 'checkbox' ? input.checked : input.value;
+        });
+        // Temperature params from the temp strip
+        ui.tempStrip.querySelectorAll('[data-param]').forEach((input) => {
+          params[input.dataset.param] = input.type === 'checkbox' ? input.checked : input.value;
+        });
+        ui.advancedGrid.querySelectorAll('[data-param]').forEach((input) => {
+          params[input.dataset.param] = input.type === 'checkbox' ? input.checked : input.value;
+        });
+        return params;
+      }
+
+      function safeJsonParse(text) {
+        if (!text.trim()) return null;
+        return JSON.parse(text);
+      }
+
+      function buildRequestSpec() {
+        const activeOrder = Array.from(ui.orderLane.querySelectorAll('.order-pill')).map((pill) => pill.dataset.key);
+        if (!activeOrder.length) {
+          throw new Error('Enable at least one ordered sampler before running inference.');
+        }
+
+        const params = collectParams();
+        const customEnabled = activeOrder.includes('custom');
+        const mirostat = Number(params.mirostat || 0);
+        const mode = ui.apiModeSelect.value;
+
+        if (customEnabled && caps && !caps.customsamplers) {
+          throw new Error('This server is not exposing request-supplied custom samplers. Relaunch KoboldCpp with --allowcustomsamplers.');
+        }
+
+        if (customEnabled && mirostat > 0) {
+          throw new Error('mirostat and custom_sampler are currently incompatible. Disable one of them before running.');
+        }
+
+        const payload = {
+          max_context_length: Number(ui.maxContextInput.value),
+          logprobs: true,
+          render_special: false,
+          sampler_order: activeOrder.map((key) => ORDERED_SAMPLERS.find((sampler) => sampler.key === key).samplerId),
+        };
+
+        if (mode === 'chat') {
+          payload.messages = [{ role: 'user', content: ui.promptInput.value }];
+          payload.max_tokens = Number(ui.maxLengthInput.value);
+          payload.seed = Number(ui.seedInput.value);
+        } else {
+          payload.prompt = ui.promptInput.value;
+          payload.max_length = Number(ui.maxLengthInput.value);
+          payload.sampler_seed = Number(ui.seedInput.value);
+        }
+
+        Object.entries(params).forEach(([key, value]) => {
+          if (typeof value === 'boolean') {
+            payload[key] = value;
+          } else if (value === '' || value === null || value === undefined) {
+            return;
+          } else if (key === 'trim_stop') {
+            payload[key] = value === true || value === 'true' || Number(value) === 1;
+          } else {
+            payload[key] = Number(value);
+          }
+        });
+
+        if (customEnabled) {
+          const code = getSamplerCodeValue().trim();
+          if (!code) {
+            throw new Error('The Custom JS sampler is enabled, but the editor is empty.');
+          }
+          payload.custom_sampler = code;
+          payload.custom_sampler_debug = true;
+          const paramsText = ui.samplerParamsInput.value.trim();
+          if (paramsText) {
+            payload.custom_sampler_params = safeJsonParse(paramsText);
+          }
+        }
+
+        return {
+          mode,
+          path: mode === 'chat' ? '/v1/chat/completions' : '/api/v1/generate',
+          payload,
+        };
+      }
+
+      function getHeaders() {
+        const headers = { 'Content-Type': 'application/json' };
+        const apiKey = ui.apiKeyInput.value.trim();
+        if (apiKey) {
+          headers.Authorization = `Bearer ${apiKey}`;
+        }
+        return headers;
+      }
+
+      async function fetchJson(path, options = {}) {
+        const endpoint = ui.endpointInput.value.trim().replace(/\/$/, '');
+        const response = await fetch(`${endpoint}${path}`, {
+          ...options,
+          headers: {
+            ...(options.headers || {}),
+            ...getHeaders(),
+          },
+        });
+        const text = await response.text();
+        let body = null;
+        try {
+          body = text ? JSON.parse(text) : null;
+        } catch (_err) {
+          body = { raw: text };
+        }
+        if (!response.ok) {
+          throw new Error(body && (body.error || body.detail || body.raw || text) ? JSON.stringify(body) : `${response.status} ${response.statusText}`);
+        }
+        return body;
+      }
+
+      function renderSummary(run) {
+        ui.summaryStrip.innerHTML = '';
+        if (!run) return;
+        const items = [
+          ['Mode', run.mode === 'chat' ? 'chat' : 'generate'],
+          ['Finish', run.finishReason || 'unknown'],
+          ['Prompt', String(run.promptTokens ?? 'n/a')],
+          ['Completion', String(run.completionTokens ?? 'n/a')],
+          ['Trace', String(run.trace?.length ?? 0)],
+        ];
+        items.forEach(([label, value]) => {
+          const chip = document.createElement('div');
+          chip.className = 'summary-chip';
+          chip.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+          ui.summaryStrip.appendChild(chip);
+        });
+      }
+
+      function renderBadges() {
+        ui.runBadges.innerHTML = '';
+
+        const samplerBadge = document.createElement('span');
+        samplerBadge.className = `badge ${caps && caps.customsamplers ? 'ok' : 'warn'}`;
+        samplerBadge.textContent = caps && caps.customsamplers ? 'Custom samplers on' : 'Native-only mode';
+        ui.runBadges.appendChild(samplerBadge);
+
+        if (currentRun && currentRun.error) {
+          const errorBadge = document.createElement('span');
+          errorBadge.className = 'badge danger';
+          errorBadge.textContent = 'Error in run';
+          ui.runBadges.appendChild(errorBadge);
+        }
+      }
+
+      function updateStatusIndicator() {
+        const dot = ui.statusDot;
+        const label = ui.statusLabel;
+        const indicator = ui.statusIndicator;
+
+        if (!caps) {
+          dot.className = 'status-dot';
+          label.textContent = 'Connecting...';
+          indicator.title = 'Checking server...';
+          return;
+        }
+
+        const parts = [];
+        if (caps._connected) {
+          parts.push(`Server: Connected`);
+          if (caps._modelName) parts.push(`Model: ${caps._modelName}`);
+          if (caps._contextCap) parts.push(`Context: ${caps._contextCap}`);
+          parts.push(`Custom samplers: ${caps.customsamplers ? 'Enabled' : 'Disabled'}`);
+
+          if (caps.customsamplers) {
+            dot.className = 'status-dot ok';
+            label.textContent = caps._modelName || 'Connected';
+          } else {
+            dot.className = 'status-dot warn';
+            label.textContent = 'No custom samplers';
+          }
+        } else {
+          dot.className = 'status-dot err';
+          label.textContent = 'Unavailable';
+          parts.push('Server: Unavailable');
+        }
+
+        indicator.title = parts.join('\n');
+      }
+
+      function normalizeResult(response, requestSpec) {
+        if (requestSpec.mode === 'chat') {
+          const choice = response?.choices?.[0] || {};
+          const message = choice.message || {};
+          const logprobs = choice.logprobs || null;
+          return {
+            mode: requestSpec.mode,
+            path: requestSpec.path,
+            payload: requestSpec.payload,
+            response,
+            text: message.content || '',
+            finishReason: choice.finish_reason || 'unknown',
+            promptTokens: response?.usage?.prompt_tokens,
+            completionTokens: response?.usage?.completion_tokens,
+            error: response?.error || '',
+            trace: logprobs?.content || [],
+            debug: response?.custom_sampler_debug || null,
+          };
+        }
+
+        const result = response?.results?.[0] || {};
+        const logprobs = result.logprobs || null;
+        return {
+          mode: requestSpec.mode,
+          path: requestSpec.path,
+          payload: requestSpec.payload,
+          response,
+          text: result.text || '',
+          finishReason: result.finish_reason || 'unknown',
+          promptTokens: result.prompt_tokens,
+          completionTokens: result.completion_tokens,
+          error: response?.error || '',
+          trace: logprobs?.content || [],
+          debug: response?.custom_sampler_debug || null,
+        };
+      }
+
+      function findFirstDivergence(currentTrace, previousTrace) {
+        const max = Math.min(currentTrace.length, previousTrace.length);
+        for (let index = 0; index < max; index += 1) {
+          if (currentTrace[index].token !== previousTrace[index].token || currentTrace[index].token_id !== previousTrace[index].token_id) {
+            return index;
+          }
+        }
+        return currentTrace.length === previousTrace.length ? -1 : max;
+      }
+
+      function renderCompareBanner() {
+        if (!currentRun || !previousRun || !currentRun.trace || !previousRun.trace) {
+          ui.compareBanner.style.display = 'none';
+          ui.compareBanner.textContent = '';
+          return;
+        }
+
+        const divergence = findFirstDivergence(currentRun.trace, previousRun.trace);
+        ui.compareBanner.style.display = 'block';
+        if (divergence < 0) {
+          ui.compareBanner.textContent = 'vs. previous: tokens identical. Inspect a token to compare probability deltas.';
+          return;
+        }
+        ui.compareBanner.textContent = `vs. previous: first divergence at token ${divergence}. Changed positions are underlined.`;
+      }
+
+      function renderLogList(logs) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'log-list';
+        logs.forEach((message) => {
+          const item = document.createElement('div');
+          item.className = 'log-item';
+          item.textContent = message;
+          wrapper.appendChild(item);
+        });
+        return wrapper;
+      }
+
+      function renderTraceTable(snapshot, title) {
+        const card = document.createElement('div');
+        card.className = 'inspector-card';
+
+        const count = snapshot && typeof snapshot.candidate_count === 'number' ? snapshot.candidate_count : 0;
+        card.innerHTML = `<div class="field-label">${escapeHtml(title)}</div><div class="small">${count} candidates</div>`;
+
+        const rows = Array.isArray(snapshot?.candidates) ? snapshot.candidates : [];
+        if (!rows.length) {
+          const empty = document.createElement('div');
+          empty.className = 'output-placeholder';
+          empty.textContent = 'No candidates recorded.';
+          card.appendChild(empty);
+          return card;
+        }
+
+        const wrap = document.createElement('div');
+        wrap.className = 'trace-table-wrap';
+        const table = document.createElement('table');
+        table.className = 'trace-table';
+        table.innerHTML = '<thead><tr><th>Token</th><th>ID</th><th>Logit</th><th>Prob</th></tr></thead>';
+        const tbody = document.createElement('tbody');
+
+        const maxProb = Math.max(...rows.map((r) => Number(r.prob || 0)), 0.000001);
+
+        rows.forEach((row) => {
+          const tr = document.createElement('tr');
+          const prob = Number(row.prob || 0);
+          const pct = (prob / maxProb) * 100;
+          tr.setAttribute('data-prob-pct', pct.toFixed(1));
+          tr.style.setProperty('--bar-w', `${pct.toFixed(1)}%`);
+          const tokenLabel = displayTokenOrBytes(row.token || '', row.bytes || []);
+          const tokenTitle = titleTokenOrBytes(row.token || '', row.bytes || []);
+          tr.innerHTML = `
+            <td title="${escapeHtml(tokenTitle)}">${escapeHtml(tokenLabel)}</td>
+            <td>${escapeHtml(String(row.token_id))}</td>
+            <td>${escapeHtml(formatLogprob(row.logit))}</td>
+            <td>${escapeHtml(formatProbability(prob))}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        card.appendChild(wrap);
+        return card;
+      }
+
+      function renderInitDebugBlock() {
+        ui.initDebugBlock.innerHTML = '';
+        if (!currentRun || !currentRun.debug || !Array.isArray(currentRun.debug.init_logs) || !currentRun.debug.init_logs.length) {
+          return;
+        }
+
+        const block = document.createElement('div');
+        block.className = 'init-debug-card';
+        block.innerHTML = '<div class="field-label">Init Logs</div>';
+        block.appendChild(renderLogList(currentRun.debug.init_logs));
+        ui.initDebugBlock.appendChild(block);
+      }
+
+      function splitTokenForDisplay(token) {
+        const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(token);
+        if (!match) return { leading: '', core: token, trailing: '' };
+        const leading = match[1];
+        const core = match[2].replace(/^\s+|\s+$/g, '');
+        const trailing = match[3];
+        if (core === '') {
+          return { leading: '', core: token, trailing: '' };
+        }
+        return { leading, core, trailing };
+      }
+
+      function renderOutput() {
+        ui.outputText.innerHTML = '';
+        if (!currentRun || !Array.isArray(currentRun.trace) || !currentRun.trace.length) {
+          ui.outputText.innerHTML = '<div class="output-placeholder">Run inference to see generated tokens here.</div>';
+          renderInspector();
+          return;
+        }
+
+        currentRun.trace.forEach((item, index) => {
+          const parts = splitTokenForDisplay(item.token);
+          if (parts.leading) {
+            ui.outputText.appendChild(document.createTextNode(parts.leading));
+          }
+
+          const span = document.createElement('span');
+          const probability = logprobToProbability(item.logprob);
+          const strength = clamp(Math.sqrt(probability), 0, 1);
+          span.className = 'output-token';
+          span.style.setProperty('--token-alpha', (0.05 + strength * 0.11).toFixed(3));
+          span.style.setProperty('--token-alpha-selected', (0.10 + strength * 0.12).toFixed(3));
+          span.textContent = parts.core || item.token;
+          span.title = `#${index} | id ${item.token_id} | logprob ${formatLogprob(item.logprob)} | prob ${formatProbability(probability)}`;
+          if (index === selectedTokenIndex) {
+            span.classList.add('selected');
+          }
+          const previousItem = previousRun && previousRun.trace ? previousRun.trace[index] : null;
+          if (previousItem && (previousItem.token !== item.token || previousItem.token_id !== item.token_id)) {
+            span.classList.add('changed');
+          }
+          span.addEventListener('click', () => {
+            selectedTokenIndex = index;
+            renderOutput();
+            renderInspector();
+          });
+          ui.outputText.appendChild(span);
+
+          if (parts.trailing) {
+            ui.outputText.appendChild(document.createTextNode(parts.trailing));
+          }
+        });
+        renderInspector();
+      }
+
+      function renderAlternatives(item) {
+        const alternatives = [
+          {
+            token: item.token,
+            token_id: item.token_id,
+            logprob: item.logprob,
+            selected: true,
+          },
+          ...((item.top_logprobs || []).map((alternative) => ({
+            token: alternative.token,
+            token_id: alternative.token_id,
+            logprob: alternative.logprob,
+            selected: false,
+          }))),
+        ];
+
+        const seen = new Set();
+        const unique = alternatives.filter((alternative) => {
+          const key = `${alternative.token_id}:${alternative.token}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        const maxProb = Math.max(...unique.map((alternative) => logprobToProbability(alternative.logprob)), 0.000001);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'alt-list';
+
+        unique.forEach((alternative) => {
+          const probability = logprobToProbability(alternative.logprob);
+          const row = document.createElement('div');
+          row.className = 'alt-row';
+
+          const bar = document.createElement('div');
+          bar.className = 'alt-bar';
+          const fill = document.createElement('div');
+          fill.className = 'alt-bar-fill';
+          fill.style.setProperty('--width', `${(probability / maxProb) * 100}%`);
+          bar.appendChild(fill);
+
+          const label = document.createElement('div');
+          label.className = 'alt-bar-label';
+          const altLabel = hasWhitespace(alternative.token) ? visualizeWhitespace(alternative.token) : prettyToken(alternative.token);
+          const altTitle = hasWhitespace(alternative.token) ? escapedToken(alternative.token) : alternative.token;
+          label.innerHTML = `<span title="${escapeHtml(altTitle)}">${escapeHtml(altLabel)}${alternative.selected ? ' <strong>(sel)</strong>' : ''}</span><span>${escapeHtml(formatProbability(probability))}</span>`;
+          bar.appendChild(label);
+
+          const logprob = document.createElement('div');
+          logprob.className = 'small mono';
+          logprob.textContent = formatLogprob(alternative.logprob);
+
+          row.appendChild(bar);
+          row.appendChild(logprob);
+          wrapper.appendChild(row);
+        });
+
+        return wrapper;
+      }
+
+      function renderInspector() {
+        ui.inspectorGrid.innerHTML = '';
+        if (!currentRun || !currentRun.trace || !currentRun.trace.length) {
+          ui.inspectorGrid.innerHTML = '<div class="output-placeholder">Click a token above to inspect it.</div>';
+          return;
+        }
+
+        selectedTokenIndex = clamp(selectedTokenIndex, 0, currentRun.trace.length - 1);
+        const item = currentRun.trace[selectedTokenIndex];
+        const previousItem = previousRun && previousRun.trace ? previousRun.trace[selectedTokenIndex] : null;
+        const probability = logprobToProbability(item.logprob);
+
+        const debugStep = currentRun.debug && Array.isArray(currentRun.debug.steps)
+          ? currentRun.debug.steps[selectedTokenIndex] || null
+          : null;
+
+        // ── Debug: trace tables first (the main thing you want to see) ──
+        if (debugStep) {
+          if (Array.isArray(debugStep.logs) && debugStep.logs.length) {
+            const logsCard = document.createElement('div');
+            logsCard.className = 'inspector-card';
+            logsCard.innerHTML = '<div class="field-label">Custom Sampler Logs</div>';
+            logsCard.appendChild(renderLogList(debugStep.logs));
+            ui.inspectorGrid.appendChild(logsCard);
+          }
+
+          const traceGrid = document.createElement('div');
+          traceGrid.className = 'trace-grid';
+          traceGrid.appendChild(renderTraceTable(debugStep.pre, 'Pre-Custom Sampler'));
+          traceGrid.appendChild(renderTraceTable(debugStep.post, 'Post-Custom Sampler'));
+          ui.inspectorGrid.appendChild(traceGrid);
+        }
+
+        // ── Fallback: top alternatives when no debug data ──
+        if (!debugStep) {
+          const alts = document.createElement('div');
+          alts.className = 'inspector-card';
+          alts.innerHTML = '<div class="field-label">Top Alternatives</div>';
+          alts.appendChild(renderAlternatives(item));
+          ui.inspectorGrid.appendChild(alts);
+        }
+
+        // ── Unified metadata strip: selected token + previous run + custom step ──
+        const tokenDisplay = hasWhitespace(item.token)
+          ? visualizeWhitespace(item.token)
+          : prettyToken(item.token);
+
+        const chips = [];
+        chips.push(`<span class="inspector-meta-token mono" title="${escapeHtml(escapedToken(item.token))}">${escapeHtml(tokenDisplay)}</span>`);
+        chips.push(`<span class="summary-chip"><span>#</span><strong>${selectedTokenIndex}</strong></span>`);
+        chips.push(`<span class="summary-chip"><span>ID</span><strong>${escapeHtml(String(item.token_id))}</strong></span>`);
+        chips.push(`<span class="summary-chip"><span>Prob</span><strong>${escapeHtml(formatProbability(probability))}</strong></span>`);
+        chips.push(`<span class="summary-chip"><span>Logprob</span><strong>${escapeHtml(formatLogprob(item.logprob))}</strong></span>`);
+
+        if (previousItem) {
+          const delta = item.logprob - previousItem.logprob;
+          const changed = previousItem.token !== item.token || previousItem.token_id !== item.token_id;
+          if (changed) {
+            const prevDisplay = hasWhitespace(previousItem.token)
+              ? visualizeWhitespace(previousItem.token)
+              : prettyToken(previousItem.token);
+            chips.push(`<span class="summary-chip" title="Previous run selected a different token"><span>Prev</span><strong class="mono">${escapeHtml(prevDisplay)}</strong></span>`);
+          }
+          chips.push(`<span class="summary-chip"><span>\u0394</span><strong>${delta >= 0 ? '+' : ''}${escapeHtml(delta.toFixed(5))}</strong></span>`);
+        }
+
+        if (debugStep) {
+          if (debugStep.returned_token_id !== undefined) {
+            chips.push(`<span class="summary-chip"><span>Ret</span><strong>${escapeHtml(String(debugStep.returned_token_id))}</strong></span>`);
+          }
+          if (debugStep.final_token_id !== undefined) {
+            chips.push(`<span class="summary-chip"><span>Final</span><strong>${escapeHtml(String(debugStep.final_token_id))}</strong></span>`);
+          }
+          if (debugStep.error) {
+            chips.push(`<span class="summary-chip" style="border-color: rgba(209,113,89,0.34); color: #f0b8aa;"><span>Err</span><strong>${escapeHtml(String(debugStep.error))}</strong></span>`);
+          }
+        }
+
+        const metaStrip = document.createElement('div');
+        metaStrip.className = 'inspector-meta-strip';
+        metaStrip.innerHTML = chips.join('');
+        ui.inspectorGrid.appendChild(metaStrip);
+      }
+
+      async function runInference() {
+        setError('');
+        ui.runButton.disabled = true;
+        try {
+          const requestSpec = buildRequestSpec();
+          ui.requestJson.textContent = JSON.stringify(requestSpec.payload, null, 2);
+          const response = await fetchJson(requestSpec.path, {
+            method: 'POST',
+            body: JSON.stringify(requestSpec.payload),
+          });
+          ui.responseJson.textContent = JSON.stringify(response, null, 2);
+
+          previousRun = currentRun;
+          currentRun = normalizeResult(response, requestSpec);
+          if (currentRun.error) {
+            setError(currentRun.error);
+          }
+          selectedTokenIndex = currentRun.trace && currentRun.trace.length ? clamp(selectedTokenIndex, 0, currentRun.trace.length - 1) : 0;
+          renderSummary(currentRun);
+          renderBadges();
+          renderCompareBanner();
+          renderInitDebugBlock();
+          renderOutput();
+          saveState();
+        } catch (error) {
+          setError(error instanceof Error ? error.message : String(error));
+          ui.responseJson.textContent = String(error);
+        } finally {
+          ui.runButton.disabled = false;
+        }
+      }
+
+      async function refreshCapabilities() {
+        caps = null;
+        updateStatusIndicator();
+        try {
+          const [version, trueMaxContext] = await Promise.all([
+            fetchJson('/api/extra/version', { method: 'GET' }),
+            fetchJson('/api/extra/true_max_context_length', { method: 'GET' }).catch(() => null),
+          ]);
+          caps = version || {};
+          caps._connected = true;
+          caps._contextCap = trueMaxContext && trueMaxContext.value ? String(trueMaxContext.value) : null;
+        } catch (_error) {
+          caps = { customsamplers: false, _connected: false };
+        }
+
+        try {
+          const modelData = await fetchJson('/api/v1/model', { method: 'GET' });
+          if (caps) caps._modelName = modelData.result || null;
+        } catch (_error) {
+          if (caps) caps._modelName = null;
+        }
+
+        updateStatusIndicator();
+        renderSamplerCards();
+        renderOrderLane();
+        renderBadges();
+      }
+
+      function copyRequestJson() {
+        try {
+          const requestSpec = buildRequestSpec();
+          ui.requestJson.textContent = JSON.stringify(requestSpec.payload, null, 2);
+          navigator.clipboard.writeText(JSON.stringify(requestSpec.payload, null, 2));
+        } catch (error) {
+          setError(error instanceof Error ? error.message : String(error));
+        }
+      }
+
+      async function loadMonaco() {
+        if (window.monaco) return window.monaco;
+        if (monacoReadyPromise) return monacoReadyPromise;
+
+        monacoReadyPromise = new Promise((resolve, reject) => {
+          const loader = document.createElement('script');
+          loader.src = `https://cdn.jsdelivr.net/npm/monaco-editor@${MONACO_VERSION}/min/vs/loader.js`;
+          loader.onload = () => {
+            const base = `https://cdn.jsdelivr.net/npm/monaco-editor@${MONACO_VERSION}/min/`;
+            window.MonacoEnvironment = {
+              getWorkerUrl() {
+                const code = `self.MonacoEnvironment={baseUrl:'${base}'};importScripts('${base}vs/base/worker/workerMain.js');`;
+                return `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
+              }
+            };
+            window.require.config({ paths: { vs: `${base}vs` } });
+            window.require(['vs/editor/editor.main'], () => resolve(window.monaco), reject);
+          };
+          loader.onerror = () => reject(new Error('Could not load Monaco from the CDN. Falling back to the plain textarea editor.'));
+          document.head.appendChild(loader);
+        });
+
+        return monacoReadyPromise;
+      }
+
+      async function setupSamplerEditor() {
+        const state = loadState();
+        const defaultExample = EXAMPLES.find((item) => item.key === (state.example || 'runner-up-bias')) || EXAMPLES[0];
+        const hasSavedCode = typeof state.samplerCode === 'string' && state.samplerCode.length > 0;
+
+        EXAMPLES.forEach((example) => {
+          const option = document.createElement('option');
+          option.value = example.key;
+          option.textContent = example.label;
+          ui.exampleSelect.appendChild(option);
+        });
+
+        ui.exampleSelect.value = defaultExample.key;
+        const initialNote = hasSavedCode
+          ? 'Saved code restored. Choose a preset and click Load to replace it.'
+          : defaultExample.note;
+        ui.exampleNote.textContent = initialNote;
+        updatePresetTooltips(initialNote);
+        ui.samplerParamsInput.value = state.samplerParams || defaultExample.params;
+        ui.samplerEditorFallback.value = hasSavedCode ? state.samplerCode : defaultExample.code;
+
+        try {
+          const [monaco, dts] = await Promise.all([
+            loadMonaco(),
+            fetch(DTS_PATH).then((response) => response.text()),
+          ]);
+
+          monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.ES2020,
+            allowNonTsExtensions: true,
+            allowJs: true,
+            checkJs: true,
+            noEmit: true,
+          });
+          monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: false,
+            noSyntaxValidation: false,
+          });
+          monaco.languages.typescript.javascriptDefaults.addExtraLib(dts, 'ts:kcpp_sampler_api.d.ts');
+          monaco.editor.createModel(dts, 'typescript', monaco.Uri.parse('ts:kcpp_sampler_api.d.ts'));
+          monaco.editor.defineTheme('kobold-samplerlab-dark', {
+            base: 'vs-dark',
+            inherit: true,
+            rules: [
+              { token: 'comment', foreground: '7E8A73' },
+              { token: 'keyword', foreground: 'D3A06D' },
+              { token: 'number', foreground: 'D3A06D' },
+              { token: 'string', foreground: 'B8C48E' },
+              { token: 'delimiter', foreground: 'ECE4D7' },
+            ],
+            colors: {
+              'editor.background': '#100E0C',
+              'editor.foreground': '#ECE4D7',
+              'editorGutter.background': '#100E0C',
+              'editor.lineHighlightBackground': '#191612',
+              'editorLineNumber.foreground': '#6F6558',
+              'editorLineNumber.activeForeground': '#C8B79F',
+              'editorCursor.foreground': '#B27B47',
+              'editor.selectionBackground': '#3C3024',
+              'editor.inactiveSelectionBackground': '#2B241C',
+              'editorIndentGuide.background1': '#2D261F',
+              'editorIndentGuide.activeBackground1': '#4A3F33',
+              'editorWhitespace.foreground': '#332A22',
+            },
+          });
+
+          monacoModel = monaco.editor.createModel(
+            ui.samplerEditorFallback.value,
+            'javascript',
+            monaco.Uri.parse('file:///samplerlab/custom-sampler.js')
+          );
+
+          monacoEditor = monaco.editor.create(ui.samplerEditorHost, {
+            model: monacoModel,
+            language: 'javascript',
+            theme: 'kobold-samplerlab-dark',
+            automaticLayout: true,
+            wordWrap: 'on',
+            minimap: { enabled: false },
+            fontFamily: 'IBM Plex Mono',
+            fontSize: 13,
+            lineNumbersMinChars: 3,
+            roundedSelection: false,
+            scrollBeyondLastLine: false,
+          });
+
+          // Ctrl+Enter / Cmd+Enter to run inference
+          monacoEditor.addAction({
+            id: 'samplerlab-run-inference',
+            label: 'Run Inference',
+            keybindings: [
+              monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+            ],
+            run() {
+              runInference();
+            },
+          });
+
+          ui.samplerEditorFallback.style.display = 'none';
+          setEditorStatus('Monaco + typings');
+        } catch (error) {
+          setEditorStatus('textarea fallback');
+          const fallbackNote = hasSavedCode
+            ? 'Monaco failed to load. Your saved code is still loaded in the textarea fallback.'
+            : `${defaultExample.note} (Monaco unavailable, using textarea fallback.)`;
+          ui.exampleNote.textContent = fallbackNote;
+          updatePresetTooltips(fallbackNote);
+        }
+
+        attachSamplerEditorChange(saveState);
+        ui.samplerParamsInput.addEventListener('input', saveState);
+        ui.exampleSelect.addEventListener('change', () => {
+          const example = EXAMPLES.find((item) => item.key === ui.exampleSelect.value);
+          if (!example) return;
+          ui.exampleNote.textContent = example.note;
+          updatePresetTooltips(example.note);
+          saveState();
+        });
+        ui.applyPresetButton.addEventListener('click', () => {
+          const example = EXAMPLES.find((item) => item.key === ui.exampleSelect.value);
+          if (!example) return;
+          setSamplerCodeValue(example.code);
+          ui.samplerParamsInput.value = example.params;
+          ui.exampleNote.textContent = `Loaded: ${example.label}`;
+          updatePresetTooltips(example.note);
+          saveState();
+        });
+      }
+
+      function bindBaseInputs() {
+        [
+          ui.endpointInput,
+          ui.apiKeyInput,
+          ui.apiModeSelect,
+          ui.promptInput,
+          ui.maxLengthInput,
+          ui.maxContextInput,
+          ui.seedInput,
+        ].forEach((element) => element.addEventListener('input', saveState));
+        ui.apiModeSelect.addEventListener('change', () => {
+          updatePromptLabel();
+          saveState();
+        });
+
+        ui.runButton.addEventListener('click', runInference);
+        ui.copyRequestButton.addEventListener('click', copyRequestJson);
+
+        ui.toggleConnButton.addEventListener('click', () => {
+          const hidden = ui.connFields.style.display === 'none';
+          ui.connFields.style.display = hidden ? '' : 'none';
+          ui.connSep.style.display = hidden ? '' : 'none';
+          ui.toggleConnButton.classList.toggle('collapsed', !hidden);
+        });
+
+        // Ctrl+Enter on fallback textarea
+        ui.samplerEditorFallback.addEventListener('keydown', (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            runInference();
+          }
+        });
+      }
+
+      function initUiHandles() {
+        ui.endpointInput = document.getElementById('endpoint-input');
+        ui.apiKeyInput = document.getElementById('api-key-input');
+        ui.apiModeSelect = document.getElementById('api-mode-select');
+        ui.connFields = document.getElementById('conn-fields');
+        ui.connSep = document.getElementById('conn-sep');
+        ui.toggleConnButton = document.getElementById('toggle-conn-button');
+        ui.promptInput = document.getElementById('prompt-input');
+        ui.promptLabel = document.getElementById('prompt-label');
+        ui.maxLengthInput = document.getElementById('max-length-input');
+        ui.maxContextInput = document.getElementById('max-context-input');
+        ui.seedInput = document.getElementById('seed-input');
+        ui.pipelineStatusBadge = document.getElementById('pipeline-status-badge');
+        ui.orderLane = document.getElementById('order-lane');
+        ui.samplerGrid = document.getElementById('sampler-grid');
+        ui.advancedGrid = document.getElementById('advanced-grid');
+        ui.tempStrip = document.getElementById('temp-strip');
+        ui.samplerEditorHost = document.getElementById('sampler-editor-host');
+        ui.samplerEditorFallback = document.getElementById('sampler-editor-fallback');
+        ui.samplerParamsInput = document.getElementById('sampler-params-input');
+        ui.exampleSelect = document.getElementById('example-select');
+        ui.applyPresetButton = document.getElementById('apply-preset-button');
+        ui.exampleNote = document.getElementById('example-note');
+        ui.requestJson = document.getElementById('request-json');
+        ui.responseJson = document.getElementById('response-json');
+        ui.errorBox = document.getElementById('error-box');
+        ui.compareBanner = document.getElementById('compare-banner');
+        ui.summaryStrip = document.getElementById('summary-strip');
+        ui.initDebugBlock = document.getElementById('init-debug-block');
+        ui.outputText = document.getElementById('output-text');
+        ui.inspectorGrid = document.getElementById('inspector-grid');
+        ui.runBadges = document.getElementById('run-badges');
+        ui.statusDot = document.getElementById('status-dot');
+        ui.statusLabel = document.getElementById('status-label');
+        ui.statusIndicator = document.getElementById('status-indicator');
+        ui.editorStatus = document.getElementById('editor-status');
+        ui.runButton = document.getElementById('run-button');
+        ui.copyRequestButton = document.getElementById('copy-request-button');
+      }
+
+      async function boot() {
+        initUiHandles();
+        restoreBaseState();
+        renderTempStrip();
+        renderAdvancedFields();
+        bindBaseInputs();
+        await setupSamplerEditor();
+        renderSummary(null);
+        renderBadges();
+        renderInitDebugBlock();
+        await refreshCapabilities();
+        saveState();
+      }
+
+      document.addEventListener('DOMContentLoaded', boot);
+    })();
+  </script>
+</body>
+</html>

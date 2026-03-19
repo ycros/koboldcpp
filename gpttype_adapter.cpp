@@ -23,6 +23,7 @@
 #include <locale>
 #include <chrono>
 
+#include "custom_sampler_duktape.h"
 #include "utils.h"
 
 //for easier compilation
@@ -79,6 +80,10 @@ std::vector<std::string> generated_tokens;
 llama_grammar *  grammar = nullptr; //currently used grammar
 llama_grammar_parser parsed_grammar;
 static std::string current_grammar = "";
+
+static inline const char * safe_cstr(const char * value) {
+    return value != nullptr ? value : "";
+}
 
 //return val: 0=fail, 1=(original ggml, alpaca), 2=(ggmf), 3=(ggjt)
 static FileFormat file_format = FileFormat::BADFORMAT;
@@ -149,6 +154,8 @@ static std::mutex concat_output_mtx;
 static std::string concat_output = "";
 static std::string concat_output_reader_copy_poll = ""; //for streaming
 static std::string concat_output_reader_copy_res = ""; //for gen response
+static std::string last_generation_error_message = "";
+static std::string last_sampler_debug_json = "";
 static std::vector<logit_bias> logit_biases;
 static bool add_bos_token = true; // if set to false, mmproj handling breaks. dont disable unless you know what you're doing
 static bool load_guidance = false; //whether to enable cfg for negative prompts
@@ -892,28 +899,46 @@ void sample_top_k(llama_token_data_array * cur_p, int32_t k) {
     cur_p->size = k;
 }
 
-llama_token sample_token(llama_token_data_array * candidates, std::mt19937 & rng)
+llama_token sample_token_no_record(llama_token_data_array * candidates, std::mt19937 & rng)
 {
     sample_softmax(candidates);
     std::vector<float> probs;
     probs.reserve(candidates->size);
-    TopPicksData newpick;
 
     for (size_t i = 0; i < candidates->size; ++i) {
         probs.push_back(candidates->data[i].p);
     }
 
     std::discrete_distribution<> dist(probs.begin(), probs.end());
-    int idx = dist(rng);
+    const int idx = dist(rng);
+    return candidates->data[idx].id;
+}
 
-    newpick.selected_token = FileFormatTokenizeID(candidates->data[idx].id, file_format, true);
-    float rp1 = (candidates->data[idx].p<=0.0001?0.0001f:candidates->data[idx].p);
+void custom_sampler_record_selected_token(llama_token_data_array * candidates, llama_token selected_token)
+{
+    sample_softmax(candidates);
+    TopPicksData newpick;
+
+    size_t selected_idx = candidates->size;
+    for (size_t i = 0; i < candidates->size; ++i) {
+        if (candidates->data[i].id == selected_token) {
+            selected_idx = i;
+            break;
+        }
+    }
+
+    if (selected_idx >= candidates->size) {
+        return;
+    }
+
+    newpick.selected_token = FileFormatTokenizeID(candidates->data[selected_idx].id, file_format, true);
+    float rp1 = (candidates->data[selected_idx].p<=0.0001?0.0001f:candidates->data[selected_idx].p);
     float sprob = logf(rp1);
     sprob = (sprob > 999.0f?999.0f:sprob);
     sprob = (sprob < -999.0f?-999.0f:sprob);
     newpick.selected_logprob = sprob;
-    newpick.selected_probability = candidates->data[idx].p;
-    newpick.selected_tokenid = candidates->data[idx].id;
+    newpick.selected_probability = candidates->data[selected_idx].p;
+    newpick.selected_tokenid = candidates->data[selected_idx].id;
     for (size_t i = 0; (i < candidates->size && i<logprobs_max); ++i)
     {
         newpick.tokens.push_back(FileFormatTokenizeID(candidates->data[i].id, file_format, true));
@@ -927,9 +952,31 @@ llama_token sample_token(llama_token_data_array * candidates, std::mt19937 & rng
     }
 
     top_picks_history.push_back(newpick);
+}
 
-    llama_token result = candidates->data[idx].id;
+llama_token sample_token(llama_token_data_array * candidates, std::mt19937 & rng)
+{
+    const llama_token result = sample_token_no_record(candidates, rng);
+    custom_sampler_record_selected_token(candidates, result);
     return result;
+}
+
+size_t custom_sampler_recent_token_count()
+{
+    return current_context_tokens.size();
+}
+
+llama_token custom_sampler_recent_token_from_back(size_t back)
+{
+    if (back >= current_context_tokens.size()) {
+        return 0;
+    }
+    return current_context_tokens[current_context_tokens.size() - 1 - back];
+}
+
+std::string custom_sampler_token_text(llama_token token)
+{
+    return FileFormatTokenizeID(token, file_format, true);
 }
 
 llama_token sample_token_mirostat(int n_vocab, llama_token_data_array * candidates, std::mt19937 & rng, float tau, float eta, int m, float * mu)
@@ -1750,10 +1797,17 @@ void sample_guidance(struct llama_context * ctx, struct llama_context * guidance
     }
 }
 
-int SampleLogits(const float * logits, int n_ctx, int n_vocab, int rep_pen_range, float rep_pen, float rep_pen_slope, float presence_penalty, float top_k, float top_a, float top_p, float min_p, float typical_p, float tfs, float nsigma, float temp, std::mt19937 & rng,
+struct sample_logits_result {
+    int token_id = 0;
+    bool ok = true;
+    std::string error_message;
+};
+
+sample_logits_result SampleLogits(const float * logits, int n_ctx, int n_vocab, int rep_pen_range, float rep_pen, float rep_pen_slope, float presence_penalty, float top_k, float top_a, float top_p, float min_p, float typical_p, float tfs, float nsigma, float temp, std::mt19937 & rng,
 int mirostat, float mirostat_tau, float mirostat_eta, float dry_multiplier, float dry_base, int dry_allowed_length, int dry_penalty_last_n, float xtc_threshold, float xtc_probability,
-const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dynatemp_range, float dynatemp_exponent, float smoothing_factor, float smoothing_curve, float adaptive_target)
+const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dynatemp_range, float dynatemp_exponent, float smoothing_factor, float smoothing_curve, float adaptive_target, duktape_custom_sampler * custom_sampler)
 {
+    sample_logits_result result;
     // printf("SampleLogits called with: n_ctx=%d, n_vocab=%d, rep_pen_range=%d, rep_pen=%f, rep_pen_slope=%f, presence_penalty=%f, top_k=%f, top_a=%f, top_p=%f, min_p=%f, typical_p=%f, tfs=%f, nsigma=%f, temp=%f, mirostat=%d, mirostat_tau=%f, mirostat_eta=%f, dry_multiplier=%f, dry_base=%f, dry_allowed_length=%d, dry_penalty_last_n=%d, xtc_threshold=%f, xtc_probability=%f, sampler_order_size=%zu, dynatemp_range=%f, dynatemp_exponent=%f, smoothing_factor=%f\n",
     // n_ctx, n_vocab, rep_pen_range, rep_pen, rep_pen_slope, presence_penalty, top_k, top_a, top_p, min_p, typical_p, tfs, nsigma, temp, mirostat, mirostat_tau, mirostat_eta, dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, xtc_threshold, xtc_probability, sampler_order.size(), dynatemp_range, dynatemp_exponent, smoothing_factor);
 
@@ -1793,6 +1847,11 @@ const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dyna
 
     if (mirostat == 1 || mirostat == 2)
     {
+        if (custom_sampler != nullptr && custom_sampler->active()) {
+            result.ok = false;
+            result.error_message = "custom samplers are not supported together with mirostat";
+            return result;
+        }
         static float mirostat_mu = 2.0f * mirostat_tau;
         const int mirostat_m = 100;
         sample_rep_pen(n_ctx, rep_pen_range, rep_pen, rep_pen_slope, presence_penalty, &candidates_p);
@@ -1851,6 +1910,23 @@ const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dyna
                 case KCPP_SAMPLER_REP_PEN:
                     sample_rep_pen(n_ctx, rep_pen_range, rep_pen, rep_pen_slope, presence_penalty, &candidates_p);
                     break;
+                case KCPP_SAMPLER_CUSTOM:
+                    if (custom_sampler != nullptr && custom_sampler->active()) {
+                        const auto custom_result = custom_sampler->apply(&candidates_p, n_ctx, n_vocab, rng);
+                        if (!custom_result.error_message.empty()) {
+                            result.ok = false;
+                            result.error_message = custom_result.error_message;
+                            return result;
+                        }
+                        if (custom_result.has_selection) {
+                            id = custom_result.token_id;
+                            custom_sampler->record_final_choice(id);
+                            custom_sampler_record_selected_token(&candidates_p, id);
+                            result.token_id = id;
+                            return result;
+                        }
+                    }
+                    break;
                 default:
                     printf("\nSampleLogits: Unknown Sampler : %d",sampler_order[i]);
                     break;
@@ -1863,7 +1939,12 @@ const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dyna
         id = sample_token(&candidates_p, rng);
     }
 
-    return id;
+    if (custom_sampler != nullptr && custom_sampler->active()) {
+        custom_sampler->record_final_choice(id);
+    }
+
+    result.token_id = id;
+    return result;
 }
 
 
@@ -2379,7 +2460,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
 
         //set device overrides if needed
         std::vector<ggml_backend_dev_t> devices_override;
-        std::string dev_override_str = inputs.devices_override;
+        std::string dev_override_str = safe_cstr(inputs.devices_override);
         if(dev_override_str!="")
         {
             devices_override = kcpp_parse_device_list(dev_override_str);
@@ -2465,7 +2546,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
         }
         for(int x=0;x<overridekv_max;++x)
         {
-            std::string override_kv = inputs.override_kv[x];
+            std::string override_kv = safe_cstr(inputs.override_kv[x]);
             if(override_kv != "" && file_format==FileFormat::GGUF_GENERIC)
             {
                 printf("\nAttempting to apply KV override: %s...\n",override_kv.c_str());
@@ -2482,7 +2563,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             model_params.kv_overrides = kvos.data();
         }
         //handle override tensor
-        std::string tensoroverrides = inputs.override_tensors;
+        std::string tensoroverrides = safe_cstr(inputs.override_tensors);
 
         if(ggml_backend_dev_count()>1 && inputs.moecpu>0)
         {
@@ -3300,6 +3381,11 @@ const std::vector<TopPicksData> gpttype_get_top_picks_data()
     return top_picks_history;
 }
 
+const std::string & gpttype_get_last_sampler_debug_json()
+{
+    return last_sampler_debug_json;
+}
+
 bool VecContainsIntVal(const std::vector<int> & vec, const int val)
 {
     for (const auto &matched : vec)
@@ -3467,6 +3553,9 @@ int smartcache_quick_snapshot(int specific_slot = -1)
 generation_outputs gpttype_generate(const generation_inputs inputs)
 {
     generation_outputs output;
+    last_generation_error_message.clear();
+    last_sampler_debug_json.clear();
+    output.error_message = nullptr;
 
     if(kcpp_data==nullptr)
     {
@@ -3476,6 +3565,8 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
         output.prompt_tokens = output.completion_tokens = 0;
         last_stop_reason = stop_reason::ERROR_ENCOUNTERED;
         output.stopreason = last_stop_reason;
+        last_generation_error_message = "text generation backend is not initialized";
+        output.error_message = last_generation_error_message.c_str();
         generation_finished = true;
         return output;
     }
@@ -3502,6 +3593,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     dry_sequence_breakers.clear();
     dry_max_token_repeat.clear();
     top_picks_history.clear();
+    last_sampler_debug_json.clear();
     early_abort = false;
 
     double time0 = 0, time1 = 0, time2 = 0;
@@ -3511,7 +3603,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
 
     for(int x=0;x<inputs.stop_sequence_len;++x)
     {
-        std::string stopper = inputs.stop_sequence[x];
+        std::string stopper = safe_cstr(inputs.stop_sequence[x]);
         if(stopper!="")
         {
             stop_sequence.push_back(stopper);
@@ -3539,7 +3631,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     banned_tokens.clear();
     for(int x=0;x<inputs.banned_tokens_len;++x)
     {
-        std::string word = inputs.banned_tokens[x];
+        std::string word = safe_cstr(inputs.banned_tokens[x]);
         word = toLowerCase(word);
         if(word!="")
         {
@@ -3618,8 +3710,8 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
         }
     }
 
-    std::string addedmemory = inputs.memory;
-    std::string negative_prompt = inputs.negative_prompt;
+    std::string addedmemory = safe_cstr(inputs.memory);
+    std::string negative_prompt = safe_cstr(inputs.negative_prompt);
 
     //clear previous run llava embd memory, just-in-time free
     for(int i=0;i<media_objects.size();++i)
@@ -3641,7 +3733,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     std::string new_media_composite = "";
     for(int x=0;x<images_max;++x)
     {
-        std::string item = inputs.images[x];
+        std::string item = safe_cstr(inputs.images[x]);
         if(item!="")
         {
             media_object lv;
@@ -3671,7 +3763,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     }
     for(int x=0;x<audio_max;++x)
     {
-        std::string item = inputs.audio[x];
+        std::string item = safe_cstr(inputs.audio[x]);
         if(item!="")
         {
             media_object lv;
@@ -3712,7 +3804,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
         media_data_changed = true;
     }
 
-    kcpp_data->prompt = inputs.prompt;
+    kcpp_data->prompt = safe_cstr(inputs.prompt);
     kcpp_data->seed = inputs.seed;
     kcpp_data->n_predict = inputs.max_length;
     kcpp_data->top_k = inputs.top_k;
@@ -3759,7 +3851,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     {
         for (int x = 0; x < inputs.dry_sequence_breakers_len; ++x)
         {
-            std::string word = inputs.dry_sequence_breakers[x];
+            std::string word = safe_cstr(inputs.dry_sequence_breakers[x]);
             if (word != "")
             {
                 kcpp_data->dry_sequence_breakers.push_back(word);
@@ -3861,7 +3953,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     bool stream_sse = inputs.stream_sse;
     bool allow_regular_prints = (!is_quiet && debugmode!=-1);
 
-    std::string grammarstr = inputs.grammar;
+    std::string grammarstr = safe_cstr(inputs.grammar);
     bool grammar_retain_state = inputs.grammar_retain_state;
     if(grammar_retain_state)
     {
@@ -4346,14 +4438,68 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
             KCPP_SAMPLER_TFS,
             KCPP_SAMPLER_TYP,
             KCPP_SAMPLER_TOP_P,
+            (inputs.custom_sampler != nullptr && inputs.custom_sampler[0] != '\0') ? KCPP_SAMPLER_CUSTOM : KCPP_SAMPLER_TEMP,
             KCPP_SAMPLER_TEMP
         };
+        if (sampler_order[sampler_order.size() - 2] == KCPP_SAMPLER_TEMP) {
+            sampler_order.pop_back();
+        }
     }
     else
     {
         for(int i=0;i<inputs.sampler_len;++i)
         {
             sampler_order.push_back(inputs.sampler_order[i]);
+        }
+    }
+
+    duktape_custom_sampler custom_sampler;
+    const bool has_custom_sampler_source = inputs.custom_sampler != nullptr && inputs.custom_sampler[0] != '\0';
+    const bool has_custom_sampler_slot = std::find(sampler_order.begin(), sampler_order.end(), KCPP_SAMPLER_CUSTOM) != sampler_order.end();
+    const auto store_custom_sampler_debug = [&]() {
+        if (inputs.custom_sampler_debug && has_custom_sampler_source) {
+            last_sampler_debug_json = custom_sampler.debug_json();
+        } else {
+            last_sampler_debug_json.clear();
+        }
+    };
+    if (has_custom_sampler_source) {
+        if (!has_custom_sampler_slot) {
+            output.text = nullptr;
+            output.status = 0;
+            output.prompt_tokens = output.completion_tokens = 0;
+            last_stop_reason = stop_reason::ERROR_ENCOUNTERED;
+            output.stopreason = last_stop_reason;
+            last_generation_error_message = "custom_sampler was provided but sampler_order does not include the custom sampler slot";
+            output.error_message = last_generation_error_message.c_str();
+            store_custom_sampler_debug();
+            generation_finished = true;
+            return output;
+        }
+
+        if (inputs.mirostat == 1 || inputs.mirostat == 2) {
+            output.text = nullptr;
+            output.status = 0;
+            output.prompt_tokens = output.completion_tokens = 0;
+            last_stop_reason = stop_reason::ERROR_ENCOUNTERED;
+            output.stopreason = last_stop_reason;
+            last_generation_error_message = "custom samplers are not supported together with mirostat";
+            output.error_message = last_generation_error_message.c_str();
+            store_custom_sampler_debug();
+            generation_finished = true;
+            return output;
+        }
+
+        if (!custom_sampler.initialize(inputs.custom_sampler, inputs.custom_sampler_params, last_generation_error_message, inputs.custom_sampler_debug)) {
+            output.text = nullptr;
+            output.status = 0;
+            output.prompt_tokens = output.completion_tokens = 0;
+            last_stop_reason = stop_reason::ERROR_ENCOUNTERED;
+            output.stopreason = last_stop_reason;
+            output.error_message = last_generation_error_message.c_str();
+            store_custom_sampler_debug();
+            generation_finished = true;
+            return output;
         }
     }
 
@@ -4810,12 +4956,27 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
                     }
                 }
 
-                id = SampleLogits(logitsPtr, nctx, n_vocab, last_n_size, repeat_penalty, kcpp_data->rep_pen_slope, presence_penalty,
+                const auto sample_result = SampleLogits(logitsPtr, nctx, n_vocab, last_n_size, repeat_penalty, kcpp_data->rep_pen_slope, presence_penalty,
                 top_k, top_a, top_p, min_p, typical_p, tfs_z, nsigma, temp, rng,
                 kcpp_data->mirostat, kcpp_data->mirostat_tau, kcpp_data->mirostat_eta,
                 kcpp_data->dry_multiplier, kcpp_data->dry_base,
                 kcpp_data->dry_allowed_length, kcpp_data->dry_penalty_last_n, kcpp_data->xtc_threshold, kcpp_data->xtc_probability,
-                sampler_order, grammar, dynatemp_range, dynatemp_exponent, smoothing_factor, smoothing_curve, adaptive_target);
+                sampler_order, grammar, dynatemp_range, dynatemp_exponent, smoothing_factor, smoothing_curve, adaptive_target, &custom_sampler);
+
+                if (!sample_result.ok) {
+                    last_generation_error_message = sample_result.error_message;
+                    output.text = nullptr;
+                    output.status = 0;
+                    output.prompt_tokens = output.completion_tokens = 0;
+                    last_stop_reason = stop_reason::ERROR_ENCOUNTERED;
+                    output.stopreason = last_stop_reason;
+                    output.error_message = last_generation_error_message.c_str();
+                    store_custom_sampler_debug();
+                    generation_finished = true;
+                    return output;
+                }
+
+                id = sample_result.token_id;
 
                 if (adaptive_target > 0.0f) {
                     float original_prob = original_candidates[id].p;
@@ -5247,6 +5408,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     concat_output_reader_copy_res = concat_output;
     concat_output_mtx.unlock();
     output.text = concat_output_reader_copy_res.c_str();
+    store_custom_sampler_debug();
     generation_finished = true;
     return output;
 }

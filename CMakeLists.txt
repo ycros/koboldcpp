@@ -504,11 +504,17 @@ target_compile_features(embeddings_adapter PUBLIC cxx_std_17) # don't bump
 target_link_libraries(embeddings_adapter PRIVATE common2 ggml ${LLAMA_EXTRA_LIBS})
 set_target_properties(embeddings_adapter PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+add_library(duktape_vendor STATIC
+            custom_sampler_duktape_vendor.c)
+target_include_directories(duktape_vendor PUBLIC . ./vendor ./include)
+set_target_properties(duktape_vendor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(gpttype_adapter
-            gpttype_adapter.cpp)
+            gpttype_adapter.cpp
+            custom_sampler_duktape.cpp)
 target_include_directories(gpttype_adapter PUBLIC . ./ggml/include ./ggml/src ./ggml/src/ggml-cpu ./include ./otherarch ./otherarch/tools ./vendor/stb ./vendor ./otherarch/sdcpp ./otherarch/sdcpp/thirdparty ./tools ./common)
 target_compile_features(gpttype_adapter PUBLIC cxx_std_17) # don't bump
-target_link_libraries(gpttype_adapter PRIVATE common2 ggml ggml_v1 ggml_v2 ggml_v3 ${LLAMA_EXTRA_LIBS})
+target_link_libraries(gpttype_adapter PRIVATE common2 ggml ggml_v1 ggml_v2 ggml_v3 duktape_vendor ${LLAMA_EXTRA_LIBS})
 set_target_properties(gpttype_adapter PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if (LLAMA_CUBLAS)
@@ -550,4 +556,3 @@ if (LLAMA_HIPBLAS)
     COMMENT "Copying DLL to parent directory"
     )
 endif()
-

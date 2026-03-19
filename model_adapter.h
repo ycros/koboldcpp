@@ -102,6 +102,7 @@ bool gpttype_generate_abort();
 std::string gpttype_get_chat_template();
 
 const std::string & gpttype_get_pending_output();
+const std::string & gpttype_get_last_sampler_debug_json();
 std::vector<int> gpttype_get_token_arr(const std::string & input, bool addbos);
 std::string gpttype_detokenize(const std::vector<int> & input, bool render_special);
 const std::vector<TopPicksData> gpttype_get_top_picks_data();

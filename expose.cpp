@@ -321,6 +321,12 @@ extern "C"
         return chat_template.c_str();
     }
 
+    static std::string sampler_debug_json = "";
+    const char* get_last_sampler_debug_json() {
+        sampler_debug_json = gpttype_get_last_sampler_debug_json();
+        return sampler_debug_json.c_str();
+    }
+
     const char* get_pending_output() {
        return gpttype_get_pending_output().c_str();
     }

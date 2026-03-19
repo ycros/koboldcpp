@@ -43,7 +43,7 @@ import gzip
 import queue
 
 # constants
-sampler_order_max = 7
+sampler_order_max = 8
 tensor_split_max = 16
 images_max = 8
 audio_max = 4
@@ -138,6 +138,7 @@ websearch_lastresponse = []
 preloaded_story = None
 chatcompl_adapter = None
 chatcompl_adapter_list = None #if using autoguess, will populate this will potential adapters
+last_sampler_debug = None
 embedded_kailite = None
 embedded_kailite_gz = None
 embedded_kcpp_docs = None
@@ -145,6 +146,9 @@ embedded_kcpp_docs_gz = None
 embedded_kcpp_sdui = None
 embedded_kcpp_sdui_gz = None
 embedded_lcpp_ui_gz = None
+embedded_samplerlab = None
+embedded_samplerlab_gz = None
+embedded_sampler_api_dts = None
 embedded_musicui = None
 embedded_musicui_gz = None
 voicebank = {}
@@ -274,6 +278,9 @@ class generation_inputs(ctypes.Structure):
                 ("xtc_probability", ctypes.c_float),
                 ("sampler_order", ctypes.c_int * sampler_order_max),
                 ("sampler_len", ctypes.c_int),
+                ("custom_sampler", ctypes.c_char_p),
+                ("custom_sampler_params", ctypes.c_char_p),
+                ("custom_sampler_debug", ctypes.c_bool),
                 ("allow_eos_token", ctypes.c_bool),
                 ("bypass_eos_token", ctypes.c_bool),
                 ("tool_call_fix", ctypes.c_bool),
@@ -305,7 +312,8 @@ class generation_outputs(ctypes.Structure):
                 ("stopreason", ctypes.c_int),
                 ("prompt_tokens", ctypes.c_int),
                 ("completion_tokens", ctypes.c_int),
-                ("text", ctypes.c_char_p)]
+                ("text", ctypes.c_char_p),
+                ("error_message", ctypes.c_char_p)]
 
 class sd_load_model_inputs(ctypes.Structure):
     _fields_ = [("model_filename", ctypes.c_char_p),
@@ -858,6 +866,7 @@ def init_library():
     handle.get_last_seed.restype = ctypes.c_int
     handle.get_last_draft_success.restype = ctypes.c_int
     handle.get_last_draft_failed.restype = ctypes.c_int
+    handle.get_last_sampler_debug_json.restype = ctypes.c_char_p
     handle.get_total_img_gens.restype = ctypes.c_int
     handle.get_total_tts_gens.restype = ctypes.c_int
     handle.get_total_transcribe_gens.restype = ctypes.c_int
@@ -1236,7 +1245,7 @@ def get_capabilities():
     has_mcp = True if (args.mcpfile and mcp_connections and len(mcp_connections) > 0) else False
     admin_type = (2 if args.admin and args.admindir and args.adminpassword else (1 if args.admin and args.admindir else 0))
     has_router = True if args.routermode else False
-    return {"result":"KoboldCpp", "version":KcppVersion, "protected":has_password, "llm":has_llm, "txt2img":has_txt2img,"vision":has_vision_support,"audio":has_audio_support,"transcribe":has_whisper,"multiplayer":has_multiplayer,"websearch":has_search,"tts":has_tts, "embeddings":has_embeddings, "music":has_music, "savedata":(savedata_obj is not None), "admin": admin_type, "router":has_router, "guidance": has_guidance, "jinja": has_jinja, "mcp":has_mcp}
+    return {"result":"KoboldCpp", "version":KcppVersion, "protected":has_password, "llm":has_llm, "txt2img":has_txt2img,"vision":has_vision_support,"audio":has_audio_support,"transcribe":has_whisper,"multiplayer":has_multiplayer,"websearch":has_search,"tts":has_tts, "embeddings":has_embeddings, "music":has_music, "savedata":(savedata_obj is not None), "admin": admin_type, "router":has_router, "guidance": has_guidance, "jinja": has_jinja, "mcp":has_mcp, "customsamplers": bool(args.allowcustomsamplers)}
 
 
 def scan_directory(dirpath, valid_exts, depth):
@@ -1263,7 +1272,6 @@ def get_current_admindir_list():
         opts.append("initial_model")
         opts.append("unload_model")
     return opts
-
 
 def dump_gguf_metadata(file_path): #if you're gonna copy this into your own project at least credit concedo
     chunk_size = 1024*1024*12  # read first 12mb of file
@@ -1821,6 +1829,9 @@ def generate(genparams, stream_flag=False):
     default_adapter = {} if chatcompl_adapter is None else chatcompl_adapter
     adapter_obj = genparams.get('adapter', default_adapter)
 
+    def error_result(message):
+        return {"text":"","status":0,"stopreason":-2,"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"error":message}
+
     prompt = genparams.get('prompt', "")
     memory = genparams.get('memory', "")
     negative_prompt = genparams.get('negative_prompt', "")
@@ -1851,7 +1862,11 @@ def generate(genparams, stream_flag=False):
     dry_sequence_breakers = genparams.get('dry_sequence_breakers', [])
     xtc_threshold = tryparsefloat(genparams.get('xtc_threshold', 0.2),0.2)
     xtc_probability = tryparsefloat(genparams.get('xtc_probability', 0),0)
-    sampler_order = genparams.get('sampler_order', [6, 0, 1, 3, 4, 2, 5])
+    custom_sampler_source = genparams.get('custom_sampler', genparams.get('custom_sampler_program', ''))
+    custom_sampler_params = genparams.get('custom_sampler_params', None)
+    custom_sampler_debug = bool(genparams.get('custom_sampler_debug', False))
+    sampler_order_specified = 'sampler_order' in genparams
+    sampler_order = genparams.get('sampler_order', [6, 0, 1, 3, 4, 2, 7, 5] if custom_sampler_source else [6, 0, 1, 3, 4, 2, 5])
     seed = tryparseint(genparams.get('sampler_seed', -1),-1)
     stop_sequence = genparams.get('stop_sequence', [])
     ban_eos_token = genparams.get('ban_eos_token', False)
@@ -1884,6 +1899,27 @@ def generate(genparams, stream_flag=False):
     bypass_eos_token = genparams.get('bypass_eos', False)
     tool_call_fix = genparams.get('using_openai_tools', False)
     custom_token_bans = genparams.get('custom_token_bans', '')
+
+    if custom_sampler_source and not args.allowcustomsamplers:
+        return error_result("request-supplied custom samplers are disabled; relaunch with --allowcustomsamplers to enable them")
+
+    if custom_sampler_source and sampler_order_specified and 7 not in sampler_order:
+        return error_result("custom_sampler was provided but sampler_order does not include the custom sampler slot 7")
+
+    custom_sampler_params_json = ""
+    if custom_sampler_params is not None:
+        try:
+            candidate_params = custom_sampler_params.decode("UTF-8", "ignore") if isinstance(custom_sampler_params, bytes) else custom_sampler_params
+            if isinstance(candidate_params, str):
+                try:
+                    json.loads(candidate_params)
+                    custom_sampler_params_json = candidate_params
+                except Exception:
+                    custom_sampler_params_json = json.dumps(candidate_params)
+            else:
+                custom_sampler_params_json = json.dumps(candidate_params)
+        except Exception as ex:
+            return error_result(f"custom_sampler_params could not be serialized to JSON: {ex}")
 
     for tok in custom_token_bans.split(','):
         tok = tok.strip()  # Remove leading/trailing whitespace
@@ -1936,6 +1972,9 @@ def generate(genparams, stream_flag=False):
     inputs.rep_pen_slope = rep_pen_slope
     inputs.presence_penalty = presence_penalty
     inputs.stream_sse = stream_sse
+    inputs.custom_sampler = custom_sampler_source.encode("UTF-8") if custom_sampler_source else "".encode("UTF-8")
+    inputs.custom_sampler_params = custom_sampler_params_json.encode("UTF-8") if custom_sampler_params_json else "".encode("UTF-8")
+    inputs.custom_sampler_debug = bool(custom_sampler_source) and custom_sampler_debug
     inputs.dynatemp_range = dynatemp_range
     inputs.dynatemp_exponent = dynatemp_exponent
     inputs.smoothing_factor = smoothing_factor
@@ -1980,6 +2019,8 @@ def generate(genparams, stream_flag=False):
     for n, breaker in enumerate(dry_sequence_breakers):
         inputs.dry_sequence_breakers[n] = breaker.encode("UTF-8")
 
+    recommended_sampler_order = [6, 0, 1, 3, 4, 2, 7, 5] if custom_sampler_source else [6, 0, 1, 3, 4, 2, 5]
+
     if sampler_order and 0 < len(sampler_order) <= sampler_order_max:
         try:
             for i, sampler in enumerate(sampler_order):
@@ -1987,7 +2028,7 @@ def generate(genparams, stream_flag=False):
             inputs.sampler_len = len(sampler_order)
             global showsamplerwarning
             if showsamplerwarning and inputs.mirostat==0 and inputs.sampler_len>0 and (inputs.sampler_order[0]!=6 or inputs.sampler_order[inputs.sampler_len-1]!=5):
-                print("\n(Note: Non-default sampler_order detected. Recommended sampler values are [6,0,1,3,4,2,5]. This message will only show once per session.)")
+                print(f"\n(Note: Non-default sampler_order detected. Recommended sampler values are {recommended_sampler_order}. This message will only show once per session.)")
                 showsamplerwarning = False
         except TypeError as e:
             print("ERROR: sampler_order must be a list of integers: " + str(e))
@@ -2038,18 +2079,21 @@ def generate(genparams, stream_flag=False):
     if pendingabortkey!="" and pendingabortkey==genkey:
         print(f"\nDeferred Abort for GenKey: {pendingabortkey}")
         pendingabortkey = ""
-        return {"text":"","status":-1,"stopreason":-1, "prompt_tokens":0, "completion_tokens": 0, "total_tokens": 0}
+        return {"text":"","status":-1,"stopreason":-1, "prompt_tokens":0, "completion_tokens": 0, "total_tokens": 0, "error":"deferred abort"}
     else:
         ret = handle.generate(inputs)
         outstr = ""
+        errstr = ""
         if ret.status==1:
             outstr = ret.text.decode("UTF-8","ignore")
+        if ret.error_message:
+            errstr = ret.error_message.decode("UTF-8","ignore")
         if trimstop:
             for trim_str in stop_sequence:
                 sindex = outstr.find(trim_str)
                 if sindex != -1 and trim_str!="":
                     outstr = outstr[:sindex]
-        return {"text":outstr,"status":ret.status,"stopreason":ret.stopreason,"prompt_tokens":ret.prompt_tokens, "completion_tokens": ret.completion_tokens}
+        return {"text":outstr,"status":ret.status,"stopreason":ret.stopreason,"prompt_tokens":ret.prompt_tokens, "completion_tokens": ret.completion_tokens, "error":errstr}
 
 def sd_get_info():
     info = handle.sd_get_info()
@@ -3959,11 +4003,12 @@ class KcppServerRequestHandler(http.server.SimpleHTTPRequestHandler):
             return result
 
     async def generate_text(self, genparams, api_format, stream_flag):
-        global friendlymodelname, chatcompl_adapter, currfinishreason
+        global friendlymodelname, chatcompl_adapter, currfinishreason, last_sampler_debug
         currfinishreason = None
         req_id_suffix = genparams.get('oai_uniqueid',1)
         chatcmpl_id = f"chatcmpl-A{req_id_suffix}"
         cmpl_id = f"cmpl-A{req_id_suffix}"
+        last_sampler_debug = None
 
         def run_blocking():  # api format 1=basic,2=kai,3=oai,4=oai-chat
             # flag instance as non-idle for a while
@@ -3974,7 +4019,7 @@ class KcppServerRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             return generate(genparams=genparams,stream_flag=stream_flag)
 
-        genout = {"text": "", "status": -1, "stopreason": -1, "prompt_tokens":0, "completion_tokens": 0, "total_tokens": 0}
+        genout = {"text": "", "status": -1, "stopreason": -1, "prompt_tokens":0, "completion_tokens": 0, "total_tokens": 0, "error": ""}
         if stream_flag:
             loop = asyncio.get_event_loop()
             executor = ThreadPoolExecutor()
@@ -3992,6 +4037,14 @@ class KcppServerRequestHandler(http.server.SimpleHTTPRequestHandler):
         if not stream_flag and ("logprobs" in genparams and genparams["logprobs"]):
             lastlogprobs = handle.last_logprobs()
             logprobsdict = parse_last_logprobs(lastlogprobs)
+
+        if not stream_flag and genparams.get("custom_sampler_debug", False):
+            samplerdebugraw = handle.get_last_sampler_debug_json()
+            if samplerdebugraw:
+                try:
+                    last_sampler_debug = json.loads(samplerdebugraw.decode("UTF-8", "ignore"))
+                except Exception as e:
+                    last_sampler_debug = {"parse_error": str(e), "raw": samplerdebugraw.decode("UTF-8", "ignore")}
 
         # flag instance as non-idle for a while
         washordereq = genparams.get('genkey', '').startswith('HORDEREQ_')
@@ -4047,6 +4100,11 @@ class KcppServerRequestHandler(http.server.SimpleHTTPRequestHandler):
             res = {"model": friendlymodelname,"created_at": str(datetime.now(timezone.utc).isoformat()),"message":{"role":"assistant","content":recvtxt},"done": True,"done_reason":currfinishreason,"total_duration": 1,"load_duration": 1,"prompt_eval_count": prompttokens,"prompt_eval_duration": 1,"eval_count": comptokens,"eval_duration": 1}
         else: #kcpp format
             res = {"results": [{"text": recvtxt, "tool_calls": tool_calls, "finish_reason": currfinishreason, "logprobs":logprobsdict, "prompt_tokens": prompttokens, "completion_tokens": comptokens}]}
+
+        if genout.get('error'):
+            res["error"] = genout.get('error')
+        if last_sampler_debug is not None:
+            res["custom_sampler_debug"] = last_sampler_debug
 
         try:
             return res
@@ -4448,7 +4506,7 @@ Change Mode<br>
         self.wfile.write(finalhtml)
 
     def do_GET(self):
-        global embedded_kailite, embedded_kcpp_docs, embedded_kcpp_sdui, embedded_kailite_gz, embedded_kcpp_docs_gz, embedded_kcpp_sdui_gz, embedded_lcpp_ui_gz, embedded_musicui, embedded_musicui_gz
+        global embedded_kailite, embedded_kcpp_docs, embedded_kcpp_sdui, embedded_kailite_gz, embedded_kcpp_docs_gz, embedded_kcpp_sdui_gz, embedded_lcpp_ui_gz, embedded_samplerlab, embedded_samplerlab_gz, embedded_sampler_api_dts, embedded_musicui, embedded_musicui_gz
         global last_req_time, start_time, cached_chat_template, has_vision_support, has_audio_support, has_whisper, friendlymodelname
         global savedata_obj, has_multiplayer, multiplayer_turn_major, multiplayer_turn_minor, multiplayer_story_data_compressed, multiplayer_dataformat, multiplayer_lastactive, maxctx, maxhordelen, friendlymodelname, lastuploadedcomfyimg, lastgeneratedcomfyimg, KcppVersion, totalgens, preloaded_story, exitcounter, currentusergenkey, friendlysdmodelname, fullsdmodelpath, password, friendlyembeddingsmodelname, voicelist
 
@@ -4586,6 +4644,11 @@ Change Mode<br>
                 lastlogprobs = handle.last_logprobs()
                 logprobsdict = parse_last_logprobs(lastlogprobs)
             response_body = (json.dumps({"logprobs":logprobsdict}).encode())
+
+        elif clean_path.endswith('/api/extra/last_sampler_debug'):
+            if not self.secure_endpoint():
+                return
+            response_body = (json.dumps({"custom_sampler_debug": last_sampler_debug}).encode())
 
         elif clean_path.endswith('/v1/models') or clean_path=='/models':
             mlist = [{"id":friendlymodelname,"object":"model","created":int(time.time()),"owned_by":"koboldcpp","permission":[],"root":"koboldcpp"}]
@@ -4767,6 +4830,23 @@ Change Mode<br>
                 response_body = embedded_musicui
             else:
                 response_body = ("KoboldCpp API is running, but KCPP MusicUI is not loaded").encode()
+
+        elif clean_path == "/samplerlab/kcpp_sampler_api.d.ts":
+            content_type = 'text/plain; charset=utf-8'
+            if embedded_sampler_api_dts is not None:
+                response_body = embedded_sampler_api_dts
+            else:
+                response_body = ("// KoboldCpp sampler API typings are not loaded.\n").encode()
+
+        elif clean_path.startswith(("/samplerlab")):
+            content_type = 'text/html'
+            if supports_gzip and embedded_samplerlab_gz is not None:
+                response_body = embedded_samplerlab_gz
+                content_encoding = 'gzip'
+            elif embedded_samplerlab is not None:
+                response_body = embedded_samplerlab
+            else:
+                response_body = ("KoboldCpp API is running, but Sampler Lab is not loaded").encode()
 
         elif clean_path=="/v1":
             content_type = 'text/html'
@@ -9012,7 +9092,7 @@ def mk_lora_info(imgloras, multipliers, mock_filesystem=False):
 
 
 def kcpp_main_process(launch_args, g_memory=None, gui_launcher=False):
-    global embedded_kailite, embedded_kcpp_docs, embedded_kcpp_sdui, embedded_kailite_gz, embedded_kcpp_docs_gz, embedded_kcpp_sdui_gz, embedded_lcpp_ui_gz, embedded_musicui, embedded_musicui_gz, start_time, exitcounter, global_memory, using_gui_launcher
+    global embedded_kailite, embedded_kcpp_docs, embedded_kcpp_sdui, embedded_kailite_gz, embedded_kcpp_docs_gz, embedded_kcpp_sdui_gz, embedded_lcpp_ui_gz, embedded_samplerlab, embedded_samplerlab_gz, embedded_sampler_api_dts, embedded_musicui, embedded_musicui_gz, start_time, exitcounter, global_memory, using_gui_launcher
     global libname, args, friendlymodelname, friendlysdmodelname, fullsdmodelpath, password, fullwhispermodelpath, ttsmodelpath, embeddingsmodelpath, musicdiffusionmodelpath, musicllmmodelpath, friendlyembeddingsmodelname, has_audio_support, has_vision_support, cached_chat_template
 
     start_server = True
@@ -9665,6 +9745,21 @@ def kcpp_main_process(launch_args, g_memory=None, gui_launcher=False):
     except Exception:
         print("Could not find Embedded MusicUI.")
 
+    try:
+        with open(os.path.join(embddir, "kcpp_samplerlab.embd"), mode='rb') as f:
+            embedded_samplerlab = f.read()
+            embedded_samplerlab_gz = gzip.compress(embedded_samplerlab)
+            print("Embedded Sampler Lab loaded.")
+    except Exception:
+        print("Could not find Embedded Sampler Lab.")
+
+    try:
+        with open(os.path.join(embddir, "kcpp_sampler_api.d.ts"), mode='rb') as f:
+            embedded_sampler_api_dts = f.read()
+            print("Embedded Sampler API typings loaded.")
+    except Exception:
+        print("Could not find Embedded Sampler API typings.")
+
     # load all TTS audio files
     if args.ttsmodel:
         try:
@@ -9763,6 +9858,7 @@ def kcpp_main_process(launch_args, g_memory=None, gui_launcher=False):
             print(f"Starting Kobold API on port {displayedport} at {endpoint_url}/api/")
             print(f"Starting OpenAI Compatible API on port {displayedport} at {endpoint_url}/v1/")
             print(f"Starting llama.cpp secondary WebUI at {endpoint_url}/lcpp/")
+            print(f"Sampler Lab is available at {endpoint_url}/samplerlab/")
             if args.sdmodel:
                 print(f"StableUI is available at {endpoint_url}/sdui/")
             if args.musicdiffusion or args.musicllm:
@@ -9775,6 +9871,7 @@ def kcpp_main_process(launch_args, g_memory=None, gui_launcher=False):
                 print(f"Your remote Kobold API can be found at {endpoint_url}/api")
                 print(f"Your remote OpenAI Compatible API can be found at {endpoint_url}/v1")
                 print(f"Starting llama.cpp secondary WebUI at {endpoint_url}/lcpp/")
+                print(f"Sampler Lab is available at {endpoint_url}/samplerlab/")
                 if args.sdmodel:
                     print(f"StableUI is available at {endpoint_url}/sdui/")
                 if args.musicdiffusion or args.musicllm:
@@ -9999,6 +10096,7 @@ if __name__ == '__main__':
     advparser.add_argument("--draftgpulayers","--gpu-layers-draft","--n-gpu-layers-draft","-ngld", metavar=('[layers]'), help="How many layers to offload to GPU for the draft model (default=full offload)", type=int, default=999)
     advparser.add_argument("--draftgpusplit", help="GPU layer distribution ratio for draft model (default=same as main). Only works if multi-GPUs selected for MAIN model and tensor_split is set!", metavar=('[Ratios]'), type=float, nargs='+')
     advparser.add_argument("--password", metavar=('[API key]'), help="Enter a password required to use this instance. This key will be required for all text endpoints. Image endpoints are not secured.", default=None)
+    advparser.add_argument("--allowcustomsamplers", help="Allows request payloads to provide custom JavaScript samplers. This executes user-provided code inside the server process, so leave it disabled unless you trust the clients.", action='store_true')
     advparser.add_argument("--ratelimit", metavar=('[seconds]'), help="If enabled, rate limit generative request by IP address. Each IP can only send a new request once per X seconds.", type=int, default=0)
     advparser.add_argument("--ignoremissing", help="Ignores all missing non-essential files, just skipping them instead.", action='store_true')
     advparser.add_argument("--chatcompletionsadapter", metavar=('[filename]'), help="Select an optional ChatCompletions Adapter JSON file to force custom instruct tags.", default="AutoGuess")

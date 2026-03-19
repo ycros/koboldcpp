@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <string>
+#include <vector>
 
 const int tensor_split_max = 16;
 const int images_max = 8;
@@ -17,6 +19,7 @@ enum samplers
     KCPP_SAMPLER_TYP=4,
     KCPP_SAMPLER_TEMP=5,
     KCPP_SAMPLER_REP_PEN=6,
+    KCPP_SAMPLER_CUSTOM=7,
     KCPP_SAMPLER_MAX
 };
 enum stop_reason
@@ -114,6 +117,9 @@ struct generation_inputs
     const float xtc_probability = 0.0f;
     const samplers sampler_order[KCPP_SAMPLER_MAX] = {};
     const int sampler_len = 0;
+    const char * custom_sampler = nullptr;
+    const char * custom_sampler_params = nullptr;
+    const bool custom_sampler_debug = false;
     const bool allow_eos_token = false;
     const bool bypass_eos_token = false;
     const bool tool_call_fix = false; //this prevents close square bracket ] from being generated early.
@@ -147,6 +153,7 @@ struct generation_outputs
     int prompt_tokens = 0;
     int completion_tokens = 0;
     const char * text; //response will now be stored in c++ allocated memory
+    const char * error_message = nullptr;
 };
 struct token_count_outputs
 {
